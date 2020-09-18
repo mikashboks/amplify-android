@@ -61,6 +61,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.Call;
@@ -82,6 +83,8 @@ public final class AWSApiPlugin extends ApiPlugin<Map<String, OkHttpClient>> {
 
     private final Set<String> restApis;
     private final Set<String> gqlApis;
+    private final long OKHTTP_TIMEOUT_SECONDS = 30;
+
 
     /**
      * Default constructor for this plugin without any override.
@@ -133,6 +136,9 @@ public final class AWSApiPlugin extends ApiPlugin<Map<String, OkHttpClient>> {
             final EndpointType endpointType = apiConfiguration.getEndpointType();
             final OkHttpClient.Builder builder = new OkHttpClient.Builder();
             builder.addNetworkInterceptor(UserAgentInterceptor.using(UserAgent::string));
+            builder.readTimeout(OKHTTP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            builder.connectTimeout(OKHTTP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            builder.writeTimeout(OKHTTP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             builder.eventListener(new ApiConnectionEventListener());
             if (apiConfiguration.getAuthorizationType() != AuthorizationType.NONE) {
                 builder.addInterceptor(interceptorFactory.create(apiConfiguration));
