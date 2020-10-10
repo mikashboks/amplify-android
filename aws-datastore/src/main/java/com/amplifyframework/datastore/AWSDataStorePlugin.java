@@ -227,6 +227,26 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
     }
 
     /**
+     * Manually triggers hydration tasks.
+     */
+    public synchronized void triggerHydration() {
+        orchestrator.triggerHydrate();
+    }
+
+    /**
+     * Manually trigger restart of orchestrator so we through the lifecycle.
+     */
+    public synchronized void restart() {
+        try {
+            orchestrator.stop()
+                .blockingAwait(LIFECYCLE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            orchestrator.start();
+        } catch (Throwable throwable) {
+            LOG.error("An error occurred while restarting the DataStore plugin.", throwable);
+        }
+    }
+
+    /**
      * Initializes the storage adapter, and gets the result as a {@link Completable}.
      * @param context An Android Context
      * @return A Completable which will initialize the storage adapter when subscribed.
