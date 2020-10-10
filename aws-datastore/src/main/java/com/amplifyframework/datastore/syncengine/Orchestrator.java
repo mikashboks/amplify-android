@@ -156,12 +156,12 @@ public final class Orchestrator {
      * Start performing sync operations between the local storage adapter
      * and the remote GraphQL endpoint.
      */
-    public void start() {
+    private void attemptStart(@NonNull final long lockAcquireTimeoutSeconds) {
         // if this is already started we don't want to potential be stuck waiting to acquire a lock
         if (isStarted()) {
             return;
         }
-        if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        if (tryAcquireStartStopLock(lockAcquireTimeoutSeconds, TimeUnit.SECONDS)) {
             disposables.add(transitionCompletable()
                 .doOnSubscribe(subscriber -> {
                     LOG.info("Starting the orchestrator.");
@@ -184,6 +184,23 @@ public final class Orchestrator {
         } else {
             LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
         }
+    }
+
+    /**
+     * Start performing sync operations between the local storage adapter
+     * and the remote GraphQL endpoint.
+     *
+     * If locked, waits for 2 seconds to acquire a lock before exiting
+     */
+    public void start() {
+        attemptStart(LOCAL_OP_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Attempts to start orchestrator however immediately exists if another process has a lock.
+     */
+    public void startWithBehaviorExitImmediatelyIfTransitioning() {
+        attemptStart(0);
     }
 
     /**
