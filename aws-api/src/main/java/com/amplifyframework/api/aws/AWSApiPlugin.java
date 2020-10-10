@@ -367,8 +367,13 @@ public final class AWSApiPlugin extends ApiPlugin<Map<String, OkHttpClient>> {
             identityValue = CognitoJWTParser
                     .getPayload(cognitoProvider.getLatestAuthToken())
                     .getString(identityClaim);
-        } catch (JSONException error) {
-            identityValue = null;
+        } catch (Exception error) {
+            try {
+                identityValue = Amplify.Auth.getPlugin("awsCognitoAuthPlugin")
+                    .getCurrentUser().getUserId();
+            } catch (Exception error2) {
+                identityValue = null;
+            }
         }
 
         if (identityValue == null || identityValue.isEmpty()) {
