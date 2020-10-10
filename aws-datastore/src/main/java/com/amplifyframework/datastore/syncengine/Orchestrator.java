@@ -156,7 +156,11 @@ public final class Orchestrator {
      * Start performing sync operations between the local storage adapter
      * and the remote GraphQL endpoint.
      */
-    public synchronized void start() {
+    public void start() {
+        // if this is already started we don't want to potential be stuck waiting to acquire a lock
+        if (isStarted()) {
+            return;
+        }
         if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             disposables.add(transitionCompletable()
                 .doOnSubscribe(subscriber -> {
