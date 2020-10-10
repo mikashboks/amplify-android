@@ -182,6 +182,33 @@ public final class Orchestrator {
         }
     }
 
+    /**
+     * Manually hydrate.
+     *
+     * */
+    public synchronized void triggerHydrate() {
+        if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (isStarted()) {
+                LOG.info("Orchestrator not running so triggering start");
+                start();
+            }
+
+            disposables.add(syncProcessor.hydrate()
+                .doOnSubscribe(subscriber -> {
+                    LOG.info("Manually triggering hydrate...");
+                })
+                .doOnError(failure -> {
+                    LOG.warn("Unable to manually trigger hydration", failure);
+                })
+                .doFinally(startStopSemaphore::release)
+                .subscribeOn(startStopScheduler)
+                .subscribe()
+            );
+        } else {
+            LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
+        }
+    }
+
     private boolean tryAcquireStartStopLock(long opTimeout, TimeUnit timeUnit) {
         boolean permitAvailable = startStopSemaphore.availablePermits() > 0;
         LOG.debug("Attempting to acquire lock. Permits available = " + permitAvailable);
