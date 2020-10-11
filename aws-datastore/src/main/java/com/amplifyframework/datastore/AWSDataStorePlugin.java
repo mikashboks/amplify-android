@@ -234,6 +234,19 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
     }
 
     /**
+     * Manually triggers hydration tasks.
+     */
+    public synchronized Completable triggerBaseHydrate() {
+        return orchestrator.triggerBaseHydrate();
+    }
+
+    public synchronized Completable reset(@NonNull Context context) {
+        LOG.warn("Trigger reset");
+        return Completable.create(emitter -> clear(() -> emitter.onComplete(), emitter::onError))
+            .doOnComplete(() -> initialize(context));
+    }
+
+    /**
      * Manually trigger restart of orchestrator so we through the lifecycle.
      */
     public synchronized void restart() {

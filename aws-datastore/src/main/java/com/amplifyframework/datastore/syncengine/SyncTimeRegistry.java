@@ -18,6 +18,7 @@ package com.amplifyframework.datastore.syncengine;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.query.Where;
 import com.amplifyframework.core.model.query.predicate.QueryField;
@@ -25,6 +26,7 @@ import com.amplifyframework.core.model.query.predicate.QueryPredicate;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
 import com.amplifyframework.datastore.storage.StorageItemChange.Initiator;
+import com.amplifyframework.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -34,6 +36,7 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
 final class SyncTimeRegistry {
+    private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
     private final LocalStorageAdapter localStorageAdapter;
 
     SyncTimeRegistry(LocalStorageAdapter localStorageAdapter) {
@@ -86,6 +89,32 @@ final class SyncTimeRegistry {
                 emitter::onError
             )
         );
+    }
+
+    <T extends Model>  Completable clearLastSyncTime(@NonNull Class<T> modelClazz) {
+        return Completable.create(emitter -> {
+            String modelClassName = modelClazz.getSimpleName();
+            QueryPredicate hasMatchingModelClassName = QueryField.field("modelClassName").eq(modelClassName);
+
+            localStorageAdapter.query(LastSyncMetadata.class, Where.matches(hasMatchingModelClassName), results -> {
+                try {
+                    LastSyncMetadata syncMetadata = extractSingleResult(modelClazz, results);
+                    if (SyncTime.from(syncMetadata.getLastSyncTime()).exists()) {
+                        LOG.debug("Clearing last sync record for " + modelClassName);
+                        localStorageAdapter.delete(
+                            syncMetadata,
+                            Initiator.SYNC_ENGINE,
+                            saveResult -> emitter.onComplete(),
+                            emitter::onError
+                        );
+                    } else {
+                        emitter.onComplete();
+                    }
+                } catch (DataStoreException queryResultFailure) {
+                    emitter.onError(queryResultFailure);
+                }
+            }, emitter::onError);
+        });
     }
 
     private <T extends Model> LastSyncMetadata extractSingleResult(

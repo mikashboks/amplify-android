@@ -16,6 +16,7 @@
 package com.amplifyframework.datastore.syncengine;
 
 import android.content.Context;
+
 import androidx.annotation.NonNull;
 import androidx.core.util.ObjectsCompat;
 import androidx.core.util.Supplier;
@@ -44,6 +45,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
@@ -68,40 +70,43 @@ public final class Orchestrator {
     private final Scheduler startStopScheduler;
     private final long adjustedTimeoutSeconds;
     private final Semaphore startStopSemaphore;
+    private final ModelProvider modelProvider;
+    private final SyncTimeRegistry syncTimeRegistry;
 
     /**
      * Constructs a new Orchestrator.
      * The Orchestrator will synchronize data between the {@link AppSync}
      * and the {@link LocalStorageAdapter}.
-     * @param modelProvider A provider of the models to be synchronized
-     * @param modelSchemaRegistry A registry of model schema
-     * @param localStorageAdapter
-     *        used to durably store offline changes until they can be written to the network
-     * @param appSync An AppSync Endpoint
-     * @param dataStoreConfigurationProvider
-     *        A {@link DataStoreConfigurationProvider}; Note that the provider-style interface
-     *        is needed because at the time this constructor is called from the
-     *        {@link AWSDataStorePlugin}'s constructor, the plugin is not fully configured yet.
-     *        The reference to the variable returned by the provider only get set after the plugin's
-     *        {@link AWSDataStorePlugin#configure(JSONObject, Context)} is invoked by Amplify.
-     * @param targetMode The desired mode of operation - online, or offline
+     *
+     * @param modelProvider                  A provider of the models to be synchronized
+     * @param modelSchemaRegistry            A registry of model schema
+     * @param localStorageAdapter            used to durably store offline changes until they can be written to the network
+     * @param appSync                        An AppSync Endpoint
+     * @param dataStoreConfigurationProvider A {@link DataStoreConfigurationProvider}; Note that the provider-style interface
+     *                                       is needed because at the time this constructor is called from the
+     *                                       {@link AWSDataStorePlugin}'s constructor, the plugin is not fully configured yet.
+     *                                       The reference to the variable returned by the provider only get set after the plugin's
+     *                                       {@link AWSDataStorePlugin#configure(JSONObject, Context)} is invoked by Amplify.
+     * @param targetMode                     The desired mode of operation - online, or offline
      */
     public Orchestrator(
-            @NonNull final ModelProvider modelProvider,
-            @NonNull final ModelSchemaRegistry modelSchemaRegistry,
-            @NonNull final LocalStorageAdapter localStorageAdapter,
-            @NonNull final AppSync appSync,
-            @NonNull final DataStoreConfigurationProvider dataStoreConfigurationProvider,
-            @NonNull final Supplier<Mode> targetMode) {
+        @NonNull final ModelProvider modelProvider,
+        @NonNull final ModelSchemaRegistry modelSchemaRegistry,
+        @NonNull final LocalStorageAdapter localStorageAdapter,
+        @NonNull final AppSync appSync,
+        @NonNull final DataStoreConfigurationProvider dataStoreConfigurationProvider,
+        @NonNull final Supplier<Mode> targetMode) {
         Objects.requireNonNull(modelSchemaRegistry);
         Objects.requireNonNull(modelProvider);
         Objects.requireNonNull(appSync);
         Objects.requireNonNull(localStorageAdapter);
 
+        this.modelProvider = modelProvider;
         this.mutationOutbox = new PersistentMutationOutbox(localStorageAdapter);
         VersionRepository versionRepository = new VersionRepository(localStorageAdapter);
         Merger merger = new Merger(mutationOutbox, versionRepository, localStorageAdapter);
         SyncTimeRegistry syncTimeRegistry = new SyncTimeRegistry(localStorageAdapter);
+        this.syncTimeRegistry = syncTimeRegistry;
 
         this.mutationProcessor = MutationProcessor.builder()
             .merger(merger)
@@ -137,6 +142,7 @@ public final class Orchestrator {
 
     /**
      * Checks if the orchestrator is running in the desired target state.
+     *
      * @return true if so, false otherwise.
      */
     public boolean isStarted() {
@@ -145,6 +151,7 @@ public final class Orchestrator {
 
     /**
      * Checks if the orchestrator is stopped.
+     *
      * @return true if so, false otherwise.
      */
     @SuppressWarnings("unused")
@@ -189,7 +196,7 @@ public final class Orchestrator {
     /**
      * Start performing sync operations between the local storage adapter
      * and the remote GraphQL endpoint.
-     *
+     * <p>
      * If locked, waits for 2 seconds to acquire a lock before exiting
      */
     public void start() {
@@ -205,8 +212,7 @@ public final class Orchestrator {
 
     /**
      * Manually hydrate.
-     *
-     * */
+     */
     public synchronized void triggerHydrate() {
         if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             if (isStarted()) {
@@ -228,6 +234,27 @@ public final class Orchestrator {
         } else {
             LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
         }
+    }
+
+    public synchronized Completable triggerBaseHydrate() {
+        LOG.info("Triggering base hydrate");
+        if (tryAcquireStartStopLock(60, TimeUnit.SECONDS)) {
+            LOG.info("Acquired lock for triggerBaseHydrate");
+            return
+                transitionToStopped(currentMode.get())
+                    .andThen(
+                        Flowable.fromIterable(modelProvider.models())
+                            .flatMapCompletable((model) -> syncTimeRegistry.clearLastSyncTime(model))
+                    )
+                    .andThen(transitionCompletable())
+                    .subscribeOn(startStopScheduler)
+                    .doFinally(startStopSemaphore::release);
+        } else {
+            return Completable.error(new DataStoreException("Unable to acquire orchestrator lock. " +
+                "Transition currently in progress.",
+                "Retry your operation"));
+        }
+
     }
 
     private boolean tryAcquireStartStopLock(long opTimeout, TimeUnit timeUnit) {
@@ -270,6 +297,7 @@ public final class Orchestrator {
 
     /**
      * Stop the orchestrator.
+     *
      * @return A completable which emits success when orchestrator stops
      */
     public synchronized Completable stop() {
@@ -281,8 +309,8 @@ public final class Orchestrator {
                 .doFinally(startStopSemaphore::release);
         } else {
             return Completable.error(new DataStoreException("Unable to acquire orchestrator lock. " +
-                                                                "Transition currently in progress.",
-                                                            "Retry your operation"));
+                "Transition currently in progress.",
+                "Retry your operation"));
         }
 
     }
@@ -375,6 +403,7 @@ public final class Orchestrator {
 
     /**
      * Start syncing models to and from a remote API.
+     *
      * @return A Completable that succeeds when API sync is enabled.
      */
     private Completable startApiSync() {
@@ -412,11 +441,11 @@ public final class Orchestrator {
             currentMode.set(Mode.SYNC_VIA_API);
             emitter.onComplete();
         })
-        .doOnError(error -> {
-            LOG.error("Failure encountered while attempting to start API sync.", error);
-            stopApiSyncBlocking();
-        })
-        .onErrorComplete();
+            .doOnError(error -> {
+                LOG.error("Failure encountered while attempting to start API sync.", error);
+                stopApiSyncBlocking();
+            })
+            .onErrorComplete();
     }
 
     private void stopApiSyncBlocking() {
@@ -442,8 +471,8 @@ public final class Orchestrator {
             subscriptionProcessor.stopAllSubscriptionActivity();
             mutationProcessor.stopDrainingMutationOutbox();
         })
-        .onErrorComplete()
-        .doOnComplete(() -> currentMode.set(Mode.LOCAL_ONLY));
+            .onErrorComplete()
+            .doOnComplete(() -> currentMode.set(Mode.LOCAL_ONLY));
     }
 
     /**
