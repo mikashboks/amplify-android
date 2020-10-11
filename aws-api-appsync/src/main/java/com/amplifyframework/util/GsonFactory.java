@@ -46,7 +46,6 @@ public final class GsonFactory {
 
     private static Gson create() {
         GsonBuilder builder = new GsonBuilder();
-        builder.serializeNulls();
         GsonTemporalAdapters.register(builder);
         GsonJavaTypeAdapters.register(builder);
         GsonPredicateAdapters.register(builder);
