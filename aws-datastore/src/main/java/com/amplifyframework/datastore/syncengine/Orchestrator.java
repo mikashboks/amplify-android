@@ -263,7 +263,11 @@ public final class Orchestrator {
     private Completable transitionToLocalOnly(Mode current) {
         switch (current) {
             case STOPPED:
-                startObservingStorageChanges();
+                try {
+                    startObservingStorageChanges();
+                } catch (Throwable error) {
+                    return Completable.error(error);
+                }
                 return Completable.complete();
             case LOCAL_ONLY:
                 return Completable.complete();
@@ -281,7 +285,11 @@ public final class Orchestrator {
             case LOCAL_ONLY:
                 return startApiSync();
             case STOPPED:
-                startObservingStorageChanges();
+                try {
+                    startObservingStorageChanges();
+                } catch (Throwable error) {
+                    return Completable.error(error);
+                }
                 return startApiSync();
             default:
                 return unknownMode(current);
