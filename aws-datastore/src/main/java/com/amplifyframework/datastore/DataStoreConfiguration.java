@@ -38,11 +38,12 @@ public final class DataStoreConfiguration {
     static final long DEFAULT_SYNC_INTERVAL_MINUTES = TimeUnit.DAYS.toMinutes(1);
     @VisibleForTesting
     static final int DEFAULT_SYNC_MAX_RECORDS = 10_000;
-    @VisibleForTesting 
+    @VisibleForTesting
     static final int DEFAULT_SYNC_PAGE_SIZE = 1_000;
 
     private final DataStoreErrorHandler dataStoreErrorHandler;
     private final DataStoreConflictHandler dataStoreConflictHandler;
+    private final DataStoreTargetModeSupplier dataStoreTargetModeSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private Long syncIntervalInMinutes;
@@ -51,11 +52,13 @@ public final class DataStoreConfiguration {
     private DataStoreConfiguration(
             DataStoreErrorHandler dataStoreErrorHandler,
             DataStoreConflictHandler dataStoreConflictHandler,
+            DataStoreTargetModeSupplier dataStoreTargetModeSupplier,
             Long syncIntervalInMinutes,
             Integer syncMaxRecords,
             Integer syncPageSize) {
         this.dataStoreErrorHandler = dataStoreErrorHandler;
         this.dataStoreConflictHandler = dataStoreConflictHandler;
+        this.dataStoreTargetModeSupplier = dataStoreTargetModeSupplier;
         this.syncMaxRecords = syncMaxRecords;
         this.syncPageSize = syncPageSize;
         if (syncIntervalInMinutes != null) {
@@ -134,6 +137,10 @@ public final class DataStoreConfiguration {
     @NonNull
     public DataStoreConflictHandler getDataStoreConflictHandler() {
         return this.dataStoreConflictHandler;
+    }
+
+    public DataStoreTargetModeSupplier getDataStoreTargetModeSupplier() {
+        return this.dataStoreTargetModeSupplier;
     }
 
     /**
@@ -236,6 +243,7 @@ public final class DataStoreConfiguration {
     public static final class Builder {
         private DataStoreErrorHandler dataStoreErrorHandler;
         private DataStoreConflictHandler dataStoreConflictHandler;
+        private DataStoreTargetModeSupplier dataStoreTargetModeSupplier;
         private Long syncIntervalInMinutes;
         private Integer syncMaxRecords;
         private Integer syncPageSize;
@@ -254,6 +262,12 @@ public final class DataStoreConfiguration {
             this.pluginJson = pluginJson;
             this.userProvidedConfiguration = userProvidedConfiguration;
             this.ensureDefaults = true;
+        }
+
+        @NonNull
+        public Builder dataStoreTargetModeSupplier(@NonNull DataStoreTargetModeSupplier dataStoreTargetModeSupplier) {
+            this.dataStoreTargetModeSupplier = Objects.requireNonNull(dataStoreTargetModeSupplier);
+            return Builder.this;
         }
 
         /**
@@ -357,6 +371,7 @@ public final class DataStoreConfiguration {
             if (userProvidedConfiguration == null) {
                 return;
             }
+            dataStoreTargetModeSupplier = userProvidedConfiguration.getDataStoreTargetModeSupplier();
             dataStoreErrorHandler = userProvidedConfiguration.getDataStoreErrorHandler();
             dataStoreConflictHandler = userProvidedConfiguration.getDataStoreConflictHandler();
             syncIntervalInMinutes = getValueOrDefault(
@@ -384,6 +399,9 @@ public final class DataStoreConfiguration {
                 dataStoreErrorHandler = getValueOrDefault(
                     dataStoreErrorHandler,
                     DefaultDataStoreErrorHandler.instance());
+                dataStoreTargetModeSupplier = getValueOrDefault(
+                    dataStoreTargetModeSupplier,
+                    DefaultDataStoreTargetModeSupplier.instance());
                 dataStoreConflictHandler = getValueOrDefault(
                     dataStoreConflictHandler,
                     ApplyRemoteConflictHandler.instance(dataStoreErrorHandler));
@@ -394,6 +412,7 @@ public final class DataStoreConfiguration {
             return new DataStoreConfiguration(
                 dataStoreErrorHandler,
                 dataStoreConflictHandler,
+                dataStoreTargetModeSupplier,
                 syncIntervalInMinutes,
                 syncMaxRecords,
                 syncPageSize

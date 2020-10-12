@@ -96,7 +96,7 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             sqliteStorageAdapter,
             AppSyncClient.via(api),
             () -> pluginConfiguration,
-            () -> api.getPlugins().isEmpty() ? Orchestrator.Mode.LOCAL_ONLY : Orchestrator.Mode.SYNC_VIA_API
+            () -> api.getPlugins().isEmpty() ? Orchestrator.Mode.LOCAL_ONLY : pluginConfiguration.getDataStoreTargetModeSupplier().get()
         );
         this.userProvidedConfiguration = userProvidedConfiguration;
     }
@@ -238,6 +238,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
      */
     public synchronized Completable triggerBaseHydrate() {
         return orchestrator.triggerBaseHydrate();
+    }
+
+    public synchronized void transition() {
+        orchestrator.transitionCompletableBlocking();
     }
 
     public synchronized Completable reset(@NonNull Context context) {
@@ -530,7 +534,7 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
                 .andThen(Completable.fromRunnable(runnable))
                 .blockingAwait(LIFECYCLE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (Throwable throwable) {
-            if (!orchestrator.isStarted()) {
+            if (!orchestrator.inMode()) {
                 LOG.warn("Failed to execute request because DataStore is not fully initialized.");
             } else {
                 LOG.warn("Failed to execute request due to an unexpected error.", throwable);
@@ -549,7 +553,7 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
                 .andThen(Completable.fromRunnable(runnable))
                 .blockingAwait(LIFECYCLE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (Throwable throwable) {
-            if (!orchestrator.isStarted()) {
+            if (!orchestrator.inMode()) {
                 LOG.warn("Failed to execute request because DataStore is not fully initialized.");
             } else {
                 LOG.warn("Failed to execute request due to an unexpected error.", throwable);

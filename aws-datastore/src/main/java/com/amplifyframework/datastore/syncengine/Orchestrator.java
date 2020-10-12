@@ -145,7 +145,7 @@ public final class Orchestrator {
      *
      * @return true if so, false otherwise.
      */
-    public boolean isStarted() {
+    public boolean inMode() {
         return ObjectsCompat.equals(targetMode.get(), currentMode.get());
     }
 
@@ -165,7 +165,7 @@ public final class Orchestrator {
      */
     private void attemptStart(@NonNull final long lockAcquireTimeoutSeconds) {
         // if this is already started we don't want to potential be stuck waiting to acquire a lock
-        if (isStarted()) {
+        if (inMode()) {
             return;
         }
         if (tryAcquireStartStopLock(lockAcquireTimeoutSeconds, TimeUnit.SECONDS)) {
@@ -175,7 +175,7 @@ public final class Orchestrator {
                 })
                 .doOnComplete(() -> {
                     LOG.info("Orchestrator completed a transition");
-                    if (isStarted()) {
+                    if (inMode()) {
                         Amplify.Hub.publish(HubChannel.DATASTORE,
                             HubEvent.create(DataStoreChannelEventName.READY));
                     }
@@ -215,7 +215,7 @@ public final class Orchestrator {
      */
     public synchronized void triggerHydrate() {
         if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            if (isStarted()) {
+            if (inMode()) {
                 LOG.info("Orchestrator not running so triggering start");
                 start();
             }
@@ -255,6 +255,51 @@ public final class Orchestrator {
                 "Retry your operation"));
         }
 
+    }
+
+    /**
+     * Start performing sync operations between the local storage adapter
+     * and the remote GraphQL endpoint.
+     */
+    public void transitionCompletableBlocking() {
+        Mode target = targetMode.get();
+        LOG.info("Orchestrator attempt to transition from " + currentMode.toString() + " to " + target.toString());
+        // if this is already started we don't want to potential be stuck waiting to acquire a lock
+        if (inMode()) {
+            LOG.info("Orchestrator already in " + target.toString());
+            return;
+        }
+        if (tryAcquireStartStopLock(NETWORK_OP_TIMEOUT_SECONDS + LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+
+            if (target == Mode.SYNC_VIA_API) {
+                try {
+                    stopApiSyncBlocking();
+                } catch (Exception e) {
+                    LOG.error("Error stopApiSyncBlocking", e);
+                }
+            }
+
+            disposables.add(
+                transitionCompletable()
+
+                    .timeout(NETWORK_OP_TIMEOUT_SECONDS + LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .doOnSubscribe(subscriber -> {
+                    LOG.info("Transitioning orchestrator");
+                })
+                .doOnComplete(() -> {
+                    LOG.info("Orchestrator completed a transition");
+                })
+                .doOnError(failure -> {
+                    LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.", failure);
+                })
+                .doOnDispose(() -> LOG.debug("Orchestrator disposed a transition."))
+                .doFinally(startStopSemaphore::release)
+                .subscribeOn(startStopScheduler)
+                .subscribe()
+            );
+        } else {
+            LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
+        }
     }
 
     private boolean tryAcquireStartStopLock(long opTimeout, TimeUnit timeUnit) {
@@ -452,7 +497,7 @@ public final class Orchestrator {
         try {
             boolean stopped = stopApiSync()
                 .subscribeOn(startStopScheduler)
-                .blockingAwait(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                .blockingAwait(adjustedTimeoutSeconds, TimeUnit.SECONDS);
             if (!stopped) {
                 throw new TimeoutException("Timed out while waiting for API synchronization to end.");
             }
@@ -469,10 +514,19 @@ public final class Orchestrator {
         return Completable.fromAction(() -> {
             LOG.info("Stopping synchronization with remote API.");
             subscriptionProcessor.stopAllSubscriptionActivity();
-            mutationProcessor.stopDrainingMutationOutbox();
         })
+            .timeout(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .onErrorComplete()
-            .doOnComplete(() -> currentMode.set(Mode.LOCAL_ONLY));
+            .andThen(Completable.fromAction(() -> {
+                LOG.info("Runing stopDrainingMutationOutbox.");
+                mutationProcessor.stopDrainingMutationOutbox();
+            }))
+            .timeout(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .onErrorComplete()
+            .doOnComplete(() -> {
+                currentMode.set(Mode.LOCAL_ONLY);
+                LOG.info("Switched to LOCAL_ONLY mode.");
+            });
     }
 
     /**
