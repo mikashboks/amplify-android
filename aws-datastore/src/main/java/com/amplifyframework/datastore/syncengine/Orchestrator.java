@@ -511,18 +511,20 @@ public final class Orchestrator {
      * A Completable that ends when API sync is stopped.
      */
     private Completable stopApiSync() {
-        return Completable.fromAction(() -> {
+        return Completable.defer(() ->
+       Completable.fromAction(() -> {
             LOG.info("Stopping synchronization with remote API.");
             subscriptionProcessor.stopAllSubscriptionActivity();
-        })
-            .timeout(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .onErrorComplete()
-            .andThen(Completable.fromAction(() -> {
+        }) .timeout(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+           .onErrorComplete()
+        )
+            .andThen(Completable.defer(() -> Completable.fromAction(() -> {
                 LOG.info("Runing stopDrainingMutationOutbox.");
                 mutationProcessor.stopDrainingMutationOutbox();
             }))
             .timeout(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .onErrorComplete()
+            )
             .doOnComplete(() -> {
                 currentMode.set(Mode.LOCAL_ONLY);
                 LOG.info("Switched to LOCAL_ONLY mode.");
