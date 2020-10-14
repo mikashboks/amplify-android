@@ -142,7 +142,9 @@ public final class AppSyncExtensions {
          * Example: Conflict resolution with an Optimistic Concurrency conflict handler.
          * Or, Lambda conflict handler returned with REJECT.
          */
-        CONFLICT_UNHANDLED("ConflictUnhandled");
+        CONFLICT_UNHANDLED("ConflictUnhandled"),
+
+        CONDITIONAL_CHECK_FAILED_EXCEPTION("ConditionalCheckFailedException");
 
         private final String value;
 
