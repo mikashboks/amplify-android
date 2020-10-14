@@ -19,6 +19,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.amplifyframework.api.graphql.GraphQLResponse;
+import com.amplifyframework.core.Action;
 import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.Consumer;
 import com.amplifyframework.core.model.Model;
@@ -108,6 +109,36 @@ final class MutationProcessor {
             .subscribe(
                 () -> LOG.warn("Observation of mutation outbox was completed."),
                 error -> LOG.warn("Error ended observation of mutation outbox: ", error)
+            )
+        );
+    }
+
+    /**
+     * Start observing the mutation outbox for locally-initiated changes.
+     *
+     * To process a pending mutation, we try to publish it to the remote GraphQL
+     * API. If that succeeds, then we can remove it from the outbox. Otherwise,
+     * we have to keep the mutation in the outbox, so that we can try to publish
+     * it again later, when network conditions become favorable again.
+     */
+    void startDrainingMutationOutbox(Action onPipelineBroken) {
+        ongoingOperationsDisposable.add(mutationOutbox.events()
+            .doOnSubscribe(disposable ->
+                LOG.info(
+                    "Started processing the mutation outbox. " +
+                        "Pending mutations will be published to the cloud."
+                )
+            )
+            .startWithItem(MutationOutbox.OutboxEvent.CONTENT_AVAILABLE) // To start draining immediately
+            .subscribeOn(Schedulers.single())
+            .observeOn(Schedulers.single())
+            .flatMapCompletable(event -> drainMutationOutbox())
+            .subscribe(
+                () -> LOG.warn("Observation of mutation outbox was completed."),
+                error ->  {
+                    LOG.warn("Error ended observation of mutation outbox: ", error);
+                    onPipelineBroken.call();
+                }
             )
         );
     }
@@ -231,7 +262,9 @@ final class MutationProcessor {
     // For an item in the outbox, dispatch an update mutation
     private <T extends Model> Single<ModelWithMetadata<T>> update(PendingMutation<T> mutation) {
         final T updatedItem = mutation.getMutatedItem();
-        return versionRepository.findModelVersion(updatedItem).flatMap(version ->
+        return versionRepository.findModelVersion(updatedItem)
+            .onErrorReturnItem(-1) // form of server win?
+            .flatMap(version ->
             publishWithStrategy(version, mutation, (model, onSuccess, onError) ->
                 appSync.update(model, version, mutation.getPredicate(), onSuccess, onError)
             )
@@ -247,7 +280,9 @@ final class MutationProcessor {
     private <T extends Model> Single<ModelWithMetadata<T>> delete(PendingMutation<T> mutation) {
         final T deletedItem = mutation.getMutatedItem();
         final Class<T> deletedItemClass = mutation.getClassOfMutatedItem();
-        return versionRepository.findModelVersion(deletedItem).flatMap(version ->
+        return versionRepository.findModelVersion(deletedItem)
+            .onErrorReturnItem(-1)
+            .flatMap(version ->
             publishWithStrategy(version, mutation, (model, onSuccess, onError) ->
                 appSync.delete(
                     deletedItemClass, deletedItem.getId(), version, mutation.getPredicate(), onSuccess, onError

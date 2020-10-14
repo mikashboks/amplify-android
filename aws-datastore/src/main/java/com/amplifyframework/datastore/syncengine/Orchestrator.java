@@ -55,8 +55,8 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
  */
 public final class Orchestrator {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
-    private static final long TIMEOUT_SECONDS_PER_MODEL = 2;
-    private static final long NETWORK_OP_TIMEOUT_SECONDS = 10;
+    private static final long TIMEOUT_SECONDS_PER_MODEL = 10;
+    private static final long NETWORK_OP_TIMEOUT_SECONDS = 30;
     private static final long LOCAL_OP_TIMEOUT_SECONDS = 5;
 
     private final SubscriptionProcessor subscriptionProcessor;
@@ -134,8 +134,8 @@ public final class Orchestrator {
         // Operation times out after 10 seconds. If there are more than 5 models,
         // then 2 seconds are added to the timer per additional model count.
         this.adjustedTimeoutSeconds = Math.max(
-            NETWORK_OP_TIMEOUT_SECONDS,
-            TIMEOUT_SECONDS_PER_MODEL * modelProvider.models().size()
+            TIMEOUT_SECONDS_PER_MODEL,
+            NETWORK_OP_TIMEOUT_SECONDS * modelProvider.models().size()
         );
         this.startStopSemaphore = new Semaphore(1);
     }
@@ -215,7 +215,7 @@ public final class Orchestrator {
      */
     public synchronized void triggerHydrate() {
         if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            if (inMode()) {
+            if (!inMode()) {
                 LOG.info("Orchestrator not running so triggering start");
                 start();
             }
@@ -478,7 +478,7 @@ public final class Orchestrator {
             }
 
             LOG.debug("Draining outbox...");
-            mutationProcessor.startDrainingMutationOutbox();
+            mutationProcessor.startDrainingMutationOutbox(this::stopApiSyncBlocking);
 
             LOG.debug("Draining subscription buffer...");
             subscriptionProcessor.startDrainingMutationBuffer(this::stopApiSyncBlocking);
@@ -497,7 +497,7 @@ public final class Orchestrator {
         try {
             boolean stopped = stopApiSync()
                 .subscribeOn(startStopScheduler)
-                .blockingAwait(adjustedTimeoutSeconds, TimeUnit.SECONDS);
+                .blockingAwait(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!stopped) {
                 throw new TimeoutException("Timed out while waiting for API synchronization to end.");
             }

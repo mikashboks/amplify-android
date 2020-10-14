@@ -48,7 +48,7 @@ final class SyncTime {
     }
 
     public static SyncTime now() {
-        return new SyncTime(Time.now());
+        return new SyncTime(Time.now() - 10000L); // lt's have this lag
     }
 
     boolean exists() {
