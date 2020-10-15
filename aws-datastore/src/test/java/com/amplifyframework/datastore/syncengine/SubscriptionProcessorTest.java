@@ -30,6 +30,7 @@ import com.amplifyframework.core.model.ModelSchema;
 import com.amplifyframework.core.model.ModelSchemaRegistry;
 import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.ModelMetadata;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
@@ -84,7 +85,8 @@ public final class SubscriptionProcessorTest {
         this.models = sortedModels(modelProvider);
         this.appSync = mock(AppSync.class);
         this.merger = mock(Merger.class);
-        this.subscriptionProcessor = new SubscriptionProcessor(appSync, modelProvider, merger);
+        this.subscriptionProcessor = new SubscriptionProcessor(appSync, modelProvider, merger,
+            () -> DefaultDataStoreSubscriptionsSupplier.instance());
     }
 
     private static List<Class<? extends Model>> sortedModels(ModelProvider modelProvider) throws AmplifyException {

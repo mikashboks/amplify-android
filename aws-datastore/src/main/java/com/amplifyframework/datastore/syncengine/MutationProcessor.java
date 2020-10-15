@@ -31,6 +31,7 @@ import com.amplifyframework.datastore.DataStoreConflictData;
 import com.amplifyframework.datastore.DataStoreConflictHandler;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.appsync.AppSync;
+import com.amplifyframework.datastore.appsync.ConditionalCheckFailedException;
 import com.amplifyframework.datastore.appsync.ConflictUnhandledError;
 import com.amplifyframework.datastore.appsync.ModelMetadata;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
@@ -94,33 +95,6 @@ final class MutationProcessor {
      * we have to keep the mutation in the outbox, so that we can try to publish
      * it again later, when network conditions become favorable again.
      */
-    void startDrainingMutationOutbox() {
-        ongoingOperationsDisposable.add(mutationOutbox.events()
-            .doOnSubscribe(disposable ->
-                LOG.info(
-                    "Started processing the mutation outbox. " +
-                        "Pending mutations will be published to the cloud."
-                )
-            )
-            .startWithItem(MutationOutbox.OutboxEvent.CONTENT_AVAILABLE) // To start draining immediately
-            .subscribeOn(Schedulers.single())
-            .observeOn(Schedulers.single())
-            .flatMapCompletable(event -> drainMutationOutbox())
-            .subscribe(
-                () -> LOG.warn("Observation of mutation outbox was completed."),
-                error -> LOG.warn("Error ended observation of mutation outbox: ", error)
-            )
-        );
-    }
-
-    /**
-     * Start observing the mutation outbox for locally-initiated changes.
-     *
-     * To process a pending mutation, we try to publish it to the remote GraphQL
-     * API. If that succeeds, then we can remove it from the outbox. Otherwise,
-     * we have to keep the mutation in the outbox, so that we can try to publish
-     * it again later, when network conditions become favorable again.
-     */
     void startDrainingMutationOutbox(Action onPipelineBroken) {
         ongoingOperationsDisposable.add(mutationOutbox.events()
             .doOnSubscribe(disposable ->
@@ -132,15 +106,24 @@ final class MutationProcessor {
             .startWithItem(MutationOutbox.OutboxEvent.CONTENT_AVAILABLE) // To start draining immediately
             .subscribeOn(Schedulers.single())
             .observeOn(Schedulers.single())
-            .flatMapCompletable(event -> drainMutationOutbox())
+            .flatMapCompletable(event ->
+                drainMutationOutbox().onErrorComplete()
+            )
             .subscribe(
                 () -> LOG.warn("Observation of mutation outbox was completed."),
-                error ->  {
+                error -> {
                     LOG.warn("Error ended observation of mutation outbox: ", error);
-                    onPipelineBroken.call();
+                    if (onPipelineBroken != null) {
+                        LOG.warn("Stopping orchrestrator: ", error);
+                        onPipelineBroken.call();
+                    }
                 }
             )
         );
+    }
+
+    void startDrainingMutationOutbox() {
+        startDrainingMutationOutbox(null);
     }
 
     private Completable drainMutationOutbox() {
@@ -170,7 +153,8 @@ final class MutationProcessor {
         // First, mark the item as in-flight.
         return mutationOutbox.markInFlight(mutationOutboxItem.getMutationId())
             // Then, put it "into flight"
-            .andThen(publishToNetwork(mutationOutboxItem)
+            .andThen(
+                publishToNetwork(mutationOutboxItem)
                 .flatMapCompletable(modelWithMetadata ->
                     // Once the server knows about it, it's safe to remove from the outbox.
                     // This is done before merging, because the merger will refuse to merge
@@ -179,6 +163,13 @@ final class MutationProcessor {
                         .andThen(merger.merge(modelWithMetadata))
                         .doOnComplete(() -> announceSuccessfulSync(modelWithMetadata))
                 )
+                .onErrorResumeNext((error) -> {
+                    if (error instanceof  ConditionalCheckFailedException) {
+                        return mutationOutbox.remove(mutationOutboxItem.getMutationId())
+                            .doOnSubscribe((i) ->  LOG.warn("Met a ConditionalCheckFailedException so removing mutation from outbox"));
+                    }
+                    return Completable.error(error);
+                })
             )
             .doOnComplete(() -> {
                 LOG.debug(
@@ -188,7 +179,11 @@ final class MutationProcessor {
                 announceSuccessfulPublication(mutationOutboxItem);
                 publishCurrentOutboxStatus();
             })
-            .doOnError(error -> LOG.warn("Failed to publish a local change = " + mutationOutboxItem, error));
+            .doOnError(error -> {
+                LOG.warn("Failed to publish a local change = " + mutationOutboxItem, error);
+                LOG.debug("Removing failed items from inflight");
+                mutationOutbox.removeFromInFlight(mutationOutboxItem.getMutationId());
+            });
     }
 
     /**
@@ -325,6 +320,13 @@ final class MutationProcessor {
             @Nullable Integer version,
             @NonNull PendingMutation<T> mutation,
             @Nullable List<GraphQLResponse.Error> errors) {
+
+        try {
+            ConditionalCheckFailedException.check(errors);
+        } catch (ConditionalCheckFailedException error) {
+            LOG.error("ConditionalCheckFailedException " + mutation.toString(), error);
+            return Single.error(error);
+        }
         // At this point, we know something wrong. Check if the mutation failed
         // due to ConflictUnhandled. If so, invoke our user-provided handler
         // to try and recover. We don't know how to resolve other types of errors,

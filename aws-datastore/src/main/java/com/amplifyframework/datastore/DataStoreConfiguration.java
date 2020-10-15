@@ -44,6 +44,7 @@ public final class DataStoreConfiguration {
     private final DataStoreErrorHandler dataStoreErrorHandler;
     private final DataStoreConflictHandler dataStoreConflictHandler;
     private final DataStoreTargetModeSupplier dataStoreTargetModeSupplier;
+    private final DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private Long syncIntervalInMinutes;
@@ -53,6 +54,7 @@ public final class DataStoreConfiguration {
             DataStoreErrorHandler dataStoreErrorHandler,
             DataStoreConflictHandler dataStoreConflictHandler,
             DataStoreTargetModeSupplier dataStoreTargetModeSupplier,
+            DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier,
             Long syncIntervalInMinutes,
             Integer syncMaxRecords,
             Integer syncPageSize) {
@@ -61,6 +63,7 @@ public final class DataStoreConfiguration {
         this.dataStoreTargetModeSupplier = dataStoreTargetModeSupplier;
         this.syncMaxRecords = syncMaxRecords;
         this.syncPageSize = syncPageSize;
+        this.dataStoreSubscriptionsSupplier = dataStoreSubscriptionsSupplier;
         if (syncIntervalInMinutes != null) {
             this.syncIntervalInMinutes = syncIntervalInMinutes;
             this.syncIntervalMs = TimeUnit.MINUTES.toMillis(syncIntervalInMinutes);
@@ -115,6 +118,8 @@ public final class DataStoreConfiguration {
         return builder()
             .dataStoreErrorHandler(dataStoreErrorHandler)
             .dataStoreConflictHandler(ApplyRemoteConflictHandler.instance(dataStoreErrorHandler))
+            .dataStoreTargetModeSupplier(DefaultDataStoreTargetModeSupplier.instance())
+            .dataStoreSubscriptionsSupplier(DefaultDataStoreSubscriptionsSupplier.instance())
             .syncIntervalInMinutes(DEFAULT_SYNC_INTERVAL_MINUTES)
             .syncPageSize(DEFAULT_SYNC_PAGE_SIZE)
             .syncMaxRecords(DEFAULT_SYNC_MAX_RECORDS)
@@ -141,6 +146,10 @@ public final class DataStoreConfiguration {
 
     public DataStoreTargetModeSupplier getDataStoreTargetModeSupplier() {
         return this.dataStoreTargetModeSupplier;
+    }
+
+    public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
+        return this.dataStoreSubscriptionsSupplier;
     }
 
     /**
@@ -244,6 +253,7 @@ public final class DataStoreConfiguration {
         private DataStoreErrorHandler dataStoreErrorHandler;
         private DataStoreConflictHandler dataStoreConflictHandler;
         private DataStoreTargetModeSupplier dataStoreTargetModeSupplier;
+        private DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
         private Long syncIntervalInMinutes;
         private Integer syncMaxRecords;
         private Integer syncPageSize;
@@ -267,6 +277,12 @@ public final class DataStoreConfiguration {
         @NonNull
         public Builder dataStoreTargetModeSupplier(@NonNull DataStoreTargetModeSupplier dataStoreTargetModeSupplier) {
             this.dataStoreTargetModeSupplier = Objects.requireNonNull(dataStoreTargetModeSupplier);
+            return Builder.this;
+        }
+
+        @NonNull
+        public Builder dataStoreSubscriptionsSupplier(@NonNull DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier) {
+            this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
             return Builder.this;
         }
 
@@ -372,6 +388,7 @@ public final class DataStoreConfiguration {
                 return;
             }
             dataStoreTargetModeSupplier = userProvidedConfiguration.getDataStoreTargetModeSupplier();
+            dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             dataStoreErrorHandler = userProvidedConfiguration.getDataStoreErrorHandler();
             dataStoreConflictHandler = userProvidedConfiguration.getDataStoreConflictHandler();
             syncIntervalInMinutes = getValueOrDefault(
@@ -402,6 +419,9 @@ public final class DataStoreConfiguration {
                 dataStoreTargetModeSupplier = getValueOrDefault(
                     dataStoreTargetModeSupplier,
                     DefaultDataStoreTargetModeSupplier.instance());
+                dataStoreSubscriptionsSupplier = getValueOrDefault(
+                    dataStoreSubscriptionsSupplier,
+                    DefaultDataStoreSubscriptionsSupplier.instance());
                 dataStoreConflictHandler = getValueOrDefault(
                     dataStoreConflictHandler,
                     ApplyRemoteConflictHandler.instance(dataStoreErrorHandler));
@@ -413,6 +433,7 @@ public final class DataStoreConfiguration {
                 dataStoreErrorHandler,
                 dataStoreConflictHandler,
                 dataStoreTargetModeSupplier,
+                dataStoreSubscriptionsSupplier,
                 syncIntervalInMinutes,
                 syncMaxRecords,
                 syncPageSize

@@ -30,8 +30,10 @@ import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.datastore.AmplifyDisposables;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
+import com.amplifyframework.datastore.model.SubscriptionModel;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
@@ -44,6 +46,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
@@ -66,6 +69,7 @@ final class SubscriptionProcessor {
     private final Merger merger;
     private final CompositeDisposable ongoingOperationsDisposable;
     private final long adjustedTimeoutSeconds;
+    private Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier;
     private ReplaySubject<SubscriptionEvent<? extends Model>> buffer;
 
     /**
@@ -77,25 +81,25 @@ final class SubscriptionProcessor {
     SubscriptionProcessor(
             @NonNull AppSync appSync,
             @NonNull ModelProvider modelProvider,
-            @NonNull Merger merger) {
+            @NonNull Merger merger,
+            @NonNull Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier) {
         this.appSync = Objects.requireNonNull(appSync);
         this.modelProvider = Objects.requireNonNull(modelProvider);
         this.merger = Objects.requireNonNull(merger);
         this.ongoingOperationsDisposable = new CompositeDisposable();
+        this.dataStoreSubscriptionsSupplier = dataStoreSubscriptionsSupplier;
 
         // Operation times out after 10 seconds. If there are more than 5 models,
         // then 2 seconds are added to the timer per additional model count.
-        this.adjustedTimeoutSeconds = Math.max(
-            NETWORK_OP_TIMEOUT_SECONDS,
-            TIMEOUT_SECONDS_PER_MODEL * modelProvider.models().size()
-        );
+        this.adjustedTimeoutSeconds = NETWORK_OP_TIMEOUT_SECONDS;
     }
 
     /**
      * Start subscribing to model mutations.
      */
     synchronized void startSubscriptions() {
-        int subscriptionCount = modelProvider.models().size() * SubscriptionType.values().length;
+        Set<SubscriptionModel> subscriptionModelTypes = dataStoreSubscriptionsSupplier.get().getSubscriptions(modelProvider);
+        int subscriptionCount = subscriptionModelTypes.size();
         // Create a latch with the number of subscriptions are requesting. Each of these will be
         // counted down when each subscription's onStarted event is called.
         CountDownLatch latch = new CountDownLatch(subscriptionCount);
@@ -104,10 +108,10 @@ final class SubscriptionProcessor {
         buffer = ReplaySubject.create();
 
         Set<Observable<SubscriptionEvent<? extends Model>>> subscriptions = new HashSet<>();
-        for (Class<? extends Model> clazz : modelProvider.models()) {
-            for (SubscriptionType subscriptionType : SubscriptionType.values()) {
-                subscriptions.add(subscriptionObservable(appSync, subscriptionType, latch, clazz));
-            }
+        for (SubscriptionModel subscriptionModel : subscriptionModelTypes) {
+            LOG.debug("Requesting subscription for " + subscriptionModel);
+            subscriptions.add(subscriptionObservable(
+                appSync, subscriptionModel.getSubscriptionType(), latch, subscriptionModel.getModelCls()));
         }
         ongoingOperationsDisposable.add(Observable.merge(subscriptions)
             .subscribeOn(Schedulers.io())
@@ -134,9 +138,9 @@ final class SubscriptionProcessor {
             Amplify.Hub.publish(HubChannel.DATASTORE,
                                 HubEvent.create(DataStoreChannelEventName.SUBSCRIPTIONS_ESTABLISHED));
             LOG.info(String.format(Locale.US,
-                "Began buffering subscription events for remote mutations %s to Cloud models of types %s.",
-                modelProvider.models(), Arrays.toString(SubscriptionType.values())
-            ));
+                "Began buffering subscription events for remote mutations to Cloud models of types %s.",
+                subscriptionModelTypes)
+            );
         } else {
             LOG.warn("Subscription processor failed to start within the expected timeout.");
         }

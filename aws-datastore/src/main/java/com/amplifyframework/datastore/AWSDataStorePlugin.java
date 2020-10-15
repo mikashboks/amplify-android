@@ -96,7 +96,7 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             sqliteStorageAdapter,
             AppSyncClient.via(api),
             () -> pluginConfiguration,
-            () -> api.getPlugins().isEmpty() ? Orchestrator.Mode.LOCAL_ONLY : pluginConfiguration.getDataStoreTargetModeSupplier().get()
+            () -> api.getPlugins().isEmpty() || pluginConfiguration == null ? Orchestrator.Mode.LOCAL_ONLY : pluginConfiguration.getDataStoreTargetModeSupplier().get()
         );
         this.userProvidedConfiguration = userProvidedConfiguration;
     }
@@ -315,6 +315,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
         save(item, QueryPredicates.all(), onItemSaved, onFailureToSave);
     }
 
+    public void restartMutationProcessor() {
+        orchestrator.restartMutationProcessor();
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -371,6 +375,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             },
             onFailureToDelete
         ));
+    }
+
+    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return orchestrator.saveDirectlyToLocalStorage(model);
     }
 
     /**

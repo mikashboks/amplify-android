@@ -23,14 +23,19 @@ import androidx.core.util.Supplier;
 
 import com.amplifyframework.AmplifyException;
 import com.amplifyframework.core.Amplify;
+import com.amplifyframework.core.Consumer;
+import com.amplifyframework.core.NoOpConsumer;
+import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.core.model.ModelSchemaRegistry;
 import com.amplifyframework.datastore.AWSDataStorePlugin;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
+import com.amplifyframework.datastore.storage.StorageItemChange;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
@@ -72,6 +77,7 @@ public final class Orchestrator {
     private final Semaphore startStopSemaphore;
     private final ModelProvider modelProvider;
     private final SyncTimeRegistry syncTimeRegistry;
+    private final LocalStorageAdapter localStorageAdapter;
 
     /**
      * Constructs a new Orchestrator.
@@ -96,11 +102,13 @@ public final class Orchestrator {
         @NonNull final AppSync appSync,
         @NonNull final DataStoreConfigurationProvider dataStoreConfigurationProvider,
         @NonNull final Supplier<Mode> targetMode) {
+        SubscriptionProcessor subscriptionProcessorTemp;
         Objects.requireNonNull(modelSchemaRegistry);
         Objects.requireNonNull(modelProvider);
         Objects.requireNonNull(appSync);
         Objects.requireNonNull(localStorageAdapter);
 
+        this.localStorageAdapter = localStorageAdapter;
         this.modelProvider = modelProvider;
         this.mutationOutbox = new PersistentMutationOutbox(localStorageAdapter);
         VersionRepository versionRepository = new VersionRepository(localStorageAdapter);
@@ -124,7 +132,17 @@ public final class Orchestrator {
             .merger(merger)
             .dataStoreConfigurationProvider(dataStoreConfigurationProvider)
             .build();
-        this.subscriptionProcessor = new SubscriptionProcessor(appSync, modelProvider, merger);
+
+
+        this.subscriptionProcessor =  new SubscriptionProcessor(appSync, modelProvider, merger,
+            () -> {
+            try {
+                return dataStoreConfigurationProvider.getConfiguration().getDataStoreSubscriptionsSupplier();
+            } catch (Exception error) {
+                LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                return DefaultDataStoreSubscriptionsSupplier.instance();
+            }
+        });
         this.storageObserver = new StorageObserver(localStorageAdapter, mutationOutbox);
         this.currentMode = new AtomicReference<>(Mode.STOPPED);
         this.targetMode = targetMode;
@@ -234,6 +252,20 @@ public final class Orchestrator {
         } else {
             LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
         }
+    }
+
+    // directly make changes to local storage
+    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return Completable.defer(() -> Completable.create(emitter ->
+            localStorageAdapter.save(
+                model,
+                StorageItemChange.Initiator.SYNC_ENGINE,
+                storageItemChange -> {
+                    emitter.onComplete();
+                },
+                emitter::onError
+            )
+        ));
     }
 
     public synchronized Completable triggerBaseHydrate() {
@@ -478,7 +510,7 @@ public final class Orchestrator {
             }
 
             LOG.debug("Draining outbox...");
-            mutationProcessor.startDrainingMutationOutbox(this::stopApiSyncBlocking);
+            mutationProcessor.startDrainingMutationOutbox();
 
             LOG.debug("Draining subscription buffer...");
             subscriptionProcessor.startDrainingMutationBuffer(this::stopApiSyncBlocking);
@@ -491,6 +523,12 @@ public final class Orchestrator {
                 stopApiSyncBlocking();
             })
             .onErrorComplete();
+    }
+
+    public void restartMutationProcessor() {
+        LOG.debug("Restarting mutation processor...");
+        mutationProcessor.stopDrainingMutationOutbox();
+        mutationProcessor.startDrainingMutationOutbox();
     }
 
     private void stopApiSyncBlocking() {

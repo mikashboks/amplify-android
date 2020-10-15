@@ -82,6 +82,8 @@ interface MutationOutbox {
     @NonNull
     Completable remove(@NonNull TimeBasedUuid pendingMutationId);
 
+    void removeFromInFlight(@NonNull TimeBasedUuid pendingMutationId);
+
     /**
      * Take a peek at the next item in the outbox.
      * @return The next pending mutation, if there is one. Null otherwise.

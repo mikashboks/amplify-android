@@ -18,14 +18,12 @@ package com.amplifyframework.datastore.appsync;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.amplifyframework.AmplifyException;
 import com.amplifyframework.api.graphql.GraphQLResponse;
 import com.amplifyframework.core.model.Model;
+import com.amplifyframework.datastore.syncengine.PendingMutation;
 import com.amplifyframework.util.Empty;
-import com.amplifyframework.util.GsonFactory;
-import com.amplifyframework.util.TypeMaker;
-import com.google.gson.Gson;
 
-import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Objects;
 
@@ -37,36 +35,30 @@ import java.util.Objects;
  *
  * This ConditionalCheckFailedExceptionError class models that response data.
  *
- * @param <T> Type of model for which a conflict occurred between client & server versions.
  * @see <a href="https://docs.aws.amazon.com/appsync/latest/devguide/conflict-detection-and-sync.html#errors">
  *     AppSync Conflict Detection & Sync Errors
  *     </a>
  */
-public final class ConditionalCheckFailedException<T extends Model> {
-    private final ModelWithMetadata<T> serverVersion;
+public final class ConditionalCheckFailedException extends AmplifyException {
 
-    private ConditionalCheckFailedException(ModelWithMetadata<T> serverVersion) {
-        this.serverVersion = serverVersion;
+    private static final long serialVersionUID = 1L;
+
+    public ConditionalCheckFailedException(@NonNull String message, @NonNull String recoverySuggestion) {
+        super(message, recoverySuggestion);
     }
 
     /**
      * Iterates over a list of GraphQL.Error, checking to see if any of them
      * contain 'ConditionalCheckFailedException' as the errorType.
-     * @param typeOfData The class of the model experiencing conflict
      * @param errors A list of GraphQL errors, as received in response to a mutation
-     * @param <T> The type of model experiencing conflict, if applicable
      * @return A model of the first ConditionalCheckFailedException error found in the GraphQL error list.
      *         If there is no ConditionalCheckFailedExceptionError in the list, returns null.
      */
     @Nullable
-    public static <T extends Model> ConditionalCheckFailedException<T> findFirst(
-            @NonNull Class<T> typeOfData,
-            @Nullable List<GraphQLResponse.Error> errors) {
+    public static void check(@Nullable List<GraphQLResponse.Error> errors) throws ConditionalCheckFailedException {
         if (Empty.check(errors)) {
-            return null;
+            return;
         }
-
-        Gson gson = GsonFactory.instance();
 
         for (GraphQLResponse.Error error : errors) {
             if (Empty.check(error.getExtensions())) {
@@ -74,50 +66,11 @@ public final class ConditionalCheckFailedException<T extends Model> {
             }
 
             AppSyncExtensions appSyncExtensions = new AppSyncExtensions(error.getExtensions());
-            if (!AppSyncExtensions.AppSyncErrorType.CONDITIONAL_CHECK_FAILED_EXCEPTION.equals(appSyncExtensions.getErrorType())) {
-                continue;
+            if (AppSyncExtensions.AppSyncErrorType.CONDITIONAL_CHECK_FAILED_EXCEPTION.equals(appSyncExtensions.getErrorType())) {
+                throw new ConditionalCheckFailedException("CONDITIONAL_CHECK_FAILED_EXCEPTION", "CONDITIONAL_CHECK_FAILED_EXCEPTION");
             }
-
-            Type type = TypeMaker.getParameterizedType(ModelWithMetadata.class, typeOfData);
-            String serverVersionJson = gson.toJson(appSyncExtensions.getData());
-            ModelWithMetadata<T> modelWithMetadata = gson.fromJson(serverVersionJson, type);
-            return new ConditionalCheckFailedException<>(Objects.requireNonNull(modelWithMetadata));
         }
 
-        return null;
-    }
-
-    /**
-     * Access the version of the data that is currently living on the server.
-     * @return Server's version of the data
-     */
-    public ModelWithMetadata<T> getServerVersion() {
-        return serverVersion;
-    }
-
-    @Override
-    public boolean equals(@Nullable Object thatObject) {
-        if (this == thatObject) {
-            return true;
-        }
-        if (thatObject == null || getClass() != thatObject.getClass()) {
-            return false;
-        }
-
-        ConditionalCheckFailedException<?> that = (ConditionalCheckFailedException<?>) thatObject;
-
-        return getServerVersion().equals(that.getServerVersion());
-    }
-
-    @Override
-    public int hashCode() {
-        return getServerVersion().hashCode();
-    }
-
-    @Override
-    public String toString() {
-        return "ConditionalCheckFailedExceptionError{" +
-            "serverVersion=" + serverVersion +
-            '}';
+        return;
     }
 }

@@ -171,7 +171,7 @@ final class PersistentMutationOutbox implements MutationOutbox {
 
     @NonNull
     @Override
-    public Completable load() {
+    public Completable  load() {
         return Completable.defer(() -> Completable.create(emitter -> {
             semaphore.acquire();
             inFlightMutations.clear();
@@ -208,6 +208,11 @@ final class PersistentMutationOutbox implements MutationOutbox {
 
     private Completable notifyContentAvailable() {
         return Completable.fromAction(() -> events.onNext(OutboxEvent.CONTENT_AVAILABLE));
+    }
+
+    @Override
+    public void removeFromInFlight(@NonNull TimeBasedUuid pendingMutationId) {
+        inFlightMutations.remove(pendingMutationId);
     }
 
     @Nullable
