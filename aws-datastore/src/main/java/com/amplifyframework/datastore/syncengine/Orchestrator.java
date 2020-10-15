@@ -151,10 +151,7 @@ public final class Orchestrator {
 
         // Operation times out after 10 seconds. If there are more than 5 models,
         // then 2 seconds are added to the timer per additional model count.
-        this.adjustedTimeoutSeconds = Math.max(
-            TIMEOUT_SECONDS_PER_MODEL,
-            NETWORK_OP_TIMEOUT_SECONDS * modelProvider.models().size()
-        );
+        this.adjustedTimeoutSeconds = NETWORK_OP_TIMEOUT_SECONDS * 10;
         this.startStopSemaphore = new Semaphore(1);
     }
 
