@@ -18,6 +18,7 @@ package com.amplifyframework.datastore.syncengine;
 import android.content.Context;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.util.ObjectsCompat;
 import androidx.core.util.Supplier;
 
@@ -151,7 +152,7 @@ public final class Orchestrator {
 
         // Operation times out after 10 seconds. If there are more than 5 models,
         // then 2 seconds are added to the timer per additional model count.
-        this.adjustedTimeoutSeconds = NETWORK_OP_TIMEOUT_SECONDS * 10;
+        this.adjustedTimeoutSeconds = 300;
         this.startStopSemaphore = new Semaphore(1);
     }
 
@@ -228,8 +229,11 @@ public final class Orchestrator {
     /**
      * Manually hydrate.
      */
-    public synchronized void triggerHydrate() {
-        if (tryAcquireStartStopLock(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+    public synchronized void triggerHydrate(@Nullable Long lockAcquireWait) {
+        if (lockAcquireWait == null) {
+            lockAcquireWait = LOCAL_OP_TIMEOUT_SECONDS;
+        }
+        if (tryAcquireStartStopLock(lockAcquireWait, TimeUnit.SECONDS)) {
             if (!inMode()) {
                 LOG.info("Orchestrator not running so triggering start");
                 start();

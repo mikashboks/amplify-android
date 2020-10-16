@@ -230,7 +230,11 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
      * Manually triggers hydration tasks.
      */
     public synchronized void triggerHydration() {
-        orchestrator.triggerHydrate();
+        orchestrator.triggerHydrate(null);
+    }
+
+    public synchronized void forceTriggerHydration() {
+        orchestrator.triggerHydrate(15L);
     }
 
     /**
