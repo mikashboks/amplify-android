@@ -135,15 +135,15 @@ public final class Orchestrator {
             .build();
 
 
-        this.subscriptionProcessor =  new SubscriptionProcessor(appSync, modelProvider, merger,
+        this.subscriptionProcessor = new SubscriptionProcessor(appSync, modelProvider, merger,
             () -> {
-            try {
-                return dataStoreConfigurationProvider.getConfiguration().getDataStoreSubscriptionsSupplier();
-            } catch (Exception error) {
-                LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
-                return DefaultDataStoreSubscriptionsSupplier.instance();
-            }
-        });
+                try {
+                    return dataStoreConfigurationProvider.getConfiguration().getDataStoreSubscriptionsSupplier();
+                } catch (Exception error) {
+                    LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                    return DefaultDataStoreSubscriptionsSupplier.instance();
+                }
+            });
         this.storageObserver = new StorageObserver(localStorageAdapter, mutationOutbox);
         this.currentMode = new AtomicReference<>(Mode.STOPPED);
         this.targetMode = targetMode;
@@ -152,7 +152,7 @@ public final class Orchestrator {
 
         // Operation times out after 10 seconds. If there are more than 5 models,
         // then 2 seconds are added to the timer per additional model count.
-        this.adjustedTimeoutSeconds = 300;
+        this.adjustedTimeoutSeconds = 60;
         this.startStopSemaphore = new Semaphore(1);
     }
 
@@ -228,17 +228,13 @@ public final class Orchestrator {
 
     /**
      * Manually hydrate.
+     * We do not need lock heere
      */
-    public synchronized void triggerHydrate(@Nullable Long lockAcquireWait) {
-        if (lockAcquireWait == null) {
-            lockAcquireWait = LOCAL_OP_TIMEOUT_SECONDS;
-        }
-        if (tryAcquireStartStopLock(lockAcquireWait, TimeUnit.SECONDS)) {
-            if (!inMode()) {
-                LOG.info("Orchestrator not running so triggering start");
-                start();
-            }
-
+    public synchronized void triggerHydrate() {
+        if (!inMode()) {
+            LOG.info("Orchestrator not running so triggering start");
+            start();
+        } else {
             disposables.add(syncProcessor.hydrate()
                 .doOnSubscribe(subscriber -> {
                     LOG.info("Manually triggering hydrate...");
@@ -246,17 +242,14 @@ public final class Orchestrator {
                 .doOnError(failure -> {
                     LOG.warn("Unable to manually trigger hydration", failure);
                 })
-                .doFinally(startStopSemaphore::release)
-                .subscribeOn(startStopScheduler)
+                .subscribeOn(Schedulers.io())
                 .subscribe()
             );
-        } else {
-            LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
         }
     }
 
     // directly make changes to local storage
-    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+    public <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
         return Completable.defer(() -> Completable.create(emitter ->
             localStorageAdapter.save(
                 model,
@@ -271,68 +264,12 @@ public final class Orchestrator {
 
     public synchronized Completable triggerBaseHydrate() {
         LOG.info("Triggering base hydrate");
-        if (tryAcquireStartStopLock(60, TimeUnit.SECONDS)) {
-            LOG.info("Acquired lock for triggerBaseHydrate");
-            return
-                transitionToStopped(currentMode.get())
-                    .andThen(
-                        Flowable.fromIterable(modelProvider.models())
-                            .flatMapCompletable((model) -> syncTimeRegistry.clearLastSyncTime(model))
-                    )
-                    .andThen(transitionCompletable())
-                    .subscribeOn(startStopScheduler)
-                    .doFinally(startStopSemaphore::release);
-        } else {
-            return Completable.error(new DataStoreException("Unable to acquire orchestrator lock. " +
-                "Transition currently in progress.",
-                "Retry your operation"));
-        }
+        return
+            Flowable.fromIterable(modelProvider.models())
+                .flatMapCompletable((model) -> syncTimeRegistry.clearLastSyncTime(model))
+                .andThen(transitionCompletable())
+                .subscribeOn(Schedulers.io());
 
-    }
-
-    /**
-     * Start performing sync operations between the local storage adapter
-     * and the remote GraphQL endpoint.
-     */
-    public void transitionCompletableBlocking() {
-        Mode target = targetMode.get();
-        LOG.info("Orchestrator attempt to transition from " + currentMode.toString() + " to " + target.toString());
-        // if this is already started we don't want to potential be stuck waiting to acquire a lock
-        if (inMode()) {
-            LOG.info("Orchestrator already in " + target.toString());
-            return;
-        }
-        if (tryAcquireStartStopLock(NETWORK_OP_TIMEOUT_SECONDS + LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-
-            if (target == Mode.SYNC_VIA_API) {
-                try {
-                    stopApiSyncBlocking();
-                } catch (Exception e) {
-                    LOG.error("Error stopApiSyncBlocking", e);
-                }
-            }
-
-            disposables.add(
-                transitionCompletable()
-
-                    .timeout(NETWORK_OP_TIMEOUT_SECONDS + LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .doOnSubscribe(subscriber -> {
-                    LOG.info("Transitioning orchestrator");
-                })
-                .doOnComplete(() -> {
-                    LOG.info("Orchestrator completed a transition");
-                })
-                .doOnError(failure -> {
-                    LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.", failure);
-                })
-                .doOnDispose(() -> LOG.debug("Orchestrator disposed a transition."))
-                .doFinally(startStopSemaphore::release)
-                .subscribeOn(startStopScheduler)
-                .subscribe()
-            );
-        } else {
-            LOG.warn("Unable to acquire orchestrator lock. Transition currently in progress.");
-        }
     }
 
     private boolean tryAcquireStartStopLock(long opTimeout, TimeUnit timeUnit) {
@@ -552,18 +489,18 @@ public final class Orchestrator {
      */
     private Completable stopApiSync() {
         return Completable.defer(() ->
-       Completable.fromAction(() -> {
-            LOG.info("Stopping synchronization with remote API.");
-            subscriptionProcessor.stopAllSubscriptionActivity();
-        }) .timeout(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-           .onErrorComplete()
+            Completable.fromAction(() -> {
+                LOG.info("Stopping synchronization with remote API.");
+                subscriptionProcessor.stopAllSubscriptionActivity();
+            }).timeout(NETWORK_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .onErrorComplete()
         )
             .andThen(Completable.defer(() -> Completable.fromAction(() -> {
-                LOG.info("Runing stopDrainingMutationOutbox.");
-                mutationProcessor.stopDrainingMutationOutbox();
-            }))
-            .timeout(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .onErrorComplete()
+                    LOG.info("Runing stopDrainingMutationOutbox.");
+                    mutationProcessor.stopDrainingMutationOutbox();
+                }))
+                    .timeout(LOCAL_OP_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .onErrorComplete()
             )
             .doOnComplete(() -> {
                 currentMode.set(Mode.LOCAL_ONLY);
