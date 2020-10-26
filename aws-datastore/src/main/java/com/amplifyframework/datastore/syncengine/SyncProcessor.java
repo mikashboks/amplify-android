@@ -76,8 +76,8 @@ final class SyncProcessor {
     private final AppSync appSync;
     private final Merger merger;
     private final DataStoreConfigurationProvider dataStoreConfigurationProvider;
-    private DataStoreSyncSupplier dataStoreSyncSupplierSupplier;
-    private final String[] modelNames;
+    private Supplier<DataStoreSyncSupplier> dataStoreSyncSupplierSupplier;
+    private String[] modelNames;
 
     private SyncProcessor(
             ModelProvider modelProvider,
@@ -92,13 +92,16 @@ final class SyncProcessor {
         this.appSync = Objects.requireNonNull(appSync);
         this.merger = Objects.requireNonNull(merger);
         this.dataStoreConfigurationProvider = dataStoreConfigurationProvider;
-        try {
-            this.dataStoreSyncSupplierSupplier = dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
-        } catch (Exception e) {
-            LOG.error("Failed to load dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier()", e);
-            this.dataStoreSyncSupplierSupplier = DefaultDataStoreSyncSupplier.instance();
-        }
-        this.modelNames = ForEach.inCollection(this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider), Class::getSimpleName).toArray(new String[0]);
+        this.dataStoreSyncSupplierSupplier = () -> {
+            try {
+                return dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
+            } catch (Exception e) {
+                LOG.error("Failed to load dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier()", e);
+                return DefaultDataStoreSyncSupplier.instance();
+            }
+        };
+
+        this.modelNames = ForEach.inCollection(modelProvider.models(), Class::getSimpleName).toArray(new String[0]);
     }
 
     /**
@@ -120,7 +123,7 @@ final class SyncProcessor {
 
         final List<Completable> hydrationTasks = new ArrayList<>();
         List<Class<? extends Model>> modelClsList =
-            new ArrayList<Class<? extends Model>>(this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider));
+            new ArrayList<Class<? extends Model>>(this.dataStoreSyncSupplierSupplier.get().getModels(this.modelProvider));
         final ConcurrentLinkedQueue<String> hydratedModels = new ConcurrentLinkedQueue<>();
 
         // And sort them all, according to their model's topological order,
