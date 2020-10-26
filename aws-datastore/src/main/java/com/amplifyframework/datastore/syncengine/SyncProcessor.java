@@ -31,6 +31,9 @@ import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreErrorHandler;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DataStoreSubscriptionsSupplier;
+import com.amplifyframework.datastore.DataStoreSyncSupplier;
+import com.amplifyframework.datastore.DefaultDataStoreSyncSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
 import com.amplifyframework.datastore.events.SyncQueriesStartedEvent;
@@ -46,6 +49,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.reactivex.rxjava3.core.Completable;
@@ -72,6 +76,7 @@ final class SyncProcessor {
     private final AppSync appSync;
     private final Merger merger;
     private final DataStoreConfigurationProvider dataStoreConfigurationProvider;
+    private DataStoreSyncSupplier dataStoreSyncSupplierSupplier;
     private final String[] modelNames;
 
     private SyncProcessor(
@@ -87,7 +92,13 @@ final class SyncProcessor {
         this.appSync = Objects.requireNonNull(appSync);
         this.merger = Objects.requireNonNull(merger);
         this.dataStoreConfigurationProvider = dataStoreConfigurationProvider;
-        this.modelNames = ForEach.inCollection(modelProvider.models(), Class::getSimpleName).toArray(new String[0]);
+        try {
+            this.dataStoreSyncSupplierSupplier = dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
+        } catch (Exception e) {
+            LOG.error("Failed to load dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier()", e);
+            this.dataStoreSyncSupplierSupplier = DefaultDataStoreSyncSupplier.instance();
+        }
+        this.modelNames = ForEach.inCollection(this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider), Class::getSimpleName).toArray(new String[0]);
     }
 
     /**
@@ -109,7 +120,7 @@ final class SyncProcessor {
 
         final List<Completable> hydrationTasks = new ArrayList<>();
         List<Class<? extends Model>> modelClsList =
-            new ArrayList<Class<? extends Model>>(modelProvider.models());
+            new ArrayList<Class<? extends Model>>(this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider));
         final ConcurrentLinkedQueue<String> hydratedModels = new ConcurrentLinkedQueue<>();
 
         // And sort them all, according to their model's topological order,
