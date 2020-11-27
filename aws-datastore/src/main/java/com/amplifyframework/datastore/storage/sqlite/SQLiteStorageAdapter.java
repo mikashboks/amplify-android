@@ -66,6 +66,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.rxjava3.core.Completable;
@@ -169,7 +172,10 @@ public final class SQLiteStorageAdapter implements LocalStorageAdapter {
         Objects.requireNonNull(context);
         Objects.requireNonNull(onSuccess);
         Objects.requireNonNull(onError);
-        this.threadPool = Executors.newCachedThreadPool();
+       // this.threadPool = Executors.newCachedThreadPool();
+        this.threadPool = new ThreadPoolExecutor(0, 100,
+            60L, TimeUnit.SECONDS,
+            new SynchronousQueue<Runnable>()); // https://github.com/aws-amplify/amplify-android/pull/891#issuecomment-708878602
         this.context = context;
         threadPool.submit(() -> {
             try {
