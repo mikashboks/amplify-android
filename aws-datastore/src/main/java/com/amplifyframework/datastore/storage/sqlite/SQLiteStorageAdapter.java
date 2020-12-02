@@ -175,7 +175,7 @@ public final class SQLiteStorageAdapter implements LocalStorageAdapter {
        // this.threadPool = Executors.newCachedThreadPool();
         this.threadPool = new ThreadPoolExecutor(0, 100,
             60L, TimeUnit.SECONDS,
-            new SynchronousQueue<Runnable>()); // https://github.com/aws-amplify/amplify-android/pull/891#issuecomment-708878602
+            new LinkedBlockingQueue<Runnable>()); // https://github.com/aws-amplify/amplify-android/pull/891#issuecomment-708878602
         this.context = context;
         threadPool.submit(() -> {
             try {
