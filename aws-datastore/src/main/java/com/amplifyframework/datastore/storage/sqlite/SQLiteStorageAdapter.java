@@ -173,7 +173,7 @@ public final class SQLiteStorageAdapter implements LocalStorageAdapter {
         Objects.requireNonNull(onSuccess);
         Objects.requireNonNull(onError);
        // this.threadPool = Executors.newCachedThreadPool();
-        this.threadPool = new ThreadPoolExecutor(0, 100,
+        this.threadPool = new ThreadPoolExecutor(0, 200,
             60L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<Runnable>()); // https://github.com/aws-amplify/amplify-android/pull/891#issuecomment-708878602
         this.context = context;
