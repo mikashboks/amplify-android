@@ -194,7 +194,7 @@ public final class PendingMutation<T extends Model> implements Comparable<Pendin
      * @return Class of the item that has been mutated
      */
     @NonNull
-    Class<T> getClassOfMutatedItem() {
+    public Class<T> getClassOfMutatedItem() {
         return classOfMutatedItem;
     }
 
@@ -203,7 +203,7 @@ public final class PendingMutation<T extends Model> implements Comparable<Pendin
      * @return Type of mutation
      */
     @NonNull
-    Type getMutationType() {
+    public Type getMutationType() {
         return mutationType;
     }
 
@@ -503,7 +503,7 @@ public final class PendingMutation<T extends Model> implements Comparable<Pendin
     /**
      * The type of mutation.
      */
-    enum Type {
+    public enum Type {
         /**
          * A model-creation mutation.
          */
