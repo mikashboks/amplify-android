@@ -52,9 +52,9 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
  */
 public final class Orchestrator {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
-    private static final long TIMEOUT_SECONDS_PER_MODEL = 2;
-    private static final long NETWORK_OP_TIMEOUT_SECONDS = 10;
-    private static final long LOCAL_OP_TIMEOUT_SECONDS = 2;
+    private static final long TIMEOUT_SECONDS_PER_MODEL = 5;
+    private static final long NETWORK_OP_TIMEOUT_SECONDS = 30;
+    private static final long LOCAL_OP_TIMEOUT_SECONDS = 5;
 
     private final SubscriptionProcessor subscriptionProcessor;
     private final SyncProcessor syncProcessor;
