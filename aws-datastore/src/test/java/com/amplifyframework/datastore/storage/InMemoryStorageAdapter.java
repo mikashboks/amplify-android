@@ -67,7 +67,7 @@ public final class InMemoryStorageAdapter implements LocalStorageAdapter {
     }
 
     @Override
-    public <T extends Model> void save(
+    public synchronized <T extends Model> void save(
             @NonNull final T item,
             @NonNull final StorageItemChange.Initiator initiator,
             @NonNull final QueryPredicate predicate,
@@ -110,7 +110,7 @@ public final class InMemoryStorageAdapter implements LocalStorageAdapter {
     }
 
     @Override
-    public <T extends Model> void query(
+    public synchronized <T extends Model> void query(
             @NonNull final Class<T> itemClass,
             @NonNull final Consumer<Iterator<T>> onSuccess,
             @NonNull final Consumer<DataStoreException> onError
@@ -120,7 +120,7 @@ public final class InMemoryStorageAdapter implements LocalStorageAdapter {
 
     @SuppressWarnings("unchecked") // (T) item *is* checked, via isAssignableFrom().
     @Override
-    public <T extends Model> void query(
+    public synchronized <T extends Model> void query(
             @NonNull final Class<T> itemClass,
             @NonNull final QueryOptions options,
             @NonNull final Consumer<Iterator<T>> onSuccess,
@@ -154,7 +154,7 @@ public final class InMemoryStorageAdapter implements LocalStorageAdapter {
 
     @SuppressWarnings("unchecked") // item.getClass() -> Class<?>, but type is T. So cast as Class<T> is OK.
     @Override
-    public <T extends Model> void delete(
+    public synchronized <T extends Model> void delete(
             @NonNull final T item,
             @NonNull final StorageItemChange.Initiator initiator,
             @NonNull final QueryPredicate predicate,
