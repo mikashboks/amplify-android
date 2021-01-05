@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.reactivex.rxjava3.core.Completable;
@@ -77,8 +78,7 @@ final class SyncProcessor {
     private final AppSync appSync;
     private final Merger merger;
     private final DataStoreConfigurationProvider dataStoreConfigurationProvider;
-    private final String[] modelNames;
-    private DataStoreSyncSupplier dataStoreSyncSupplierSupplier;
+    private Supplier<DataStoreSyncSupplier> dataStoreSyncSupplierSupplier;
     private final QueryPredicateProvider queryPredicateProvider;
 
     private SyncProcessor(Builder builder) {
@@ -89,17 +89,7 @@ final class SyncProcessor {
         this.merger = builder.merger;
         this.dataStoreConfigurationProvider = builder.dataStoreConfigurationProvider;
         this.queryPredicateProvider = builder.queryPredicateProvider;
-        try {
-            this.dataStoreSyncSupplierSupplier = dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
-        } catch (Exception e) {
-            LOG.error("Failed to load dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier()", e);
-            this.dataStoreSyncSupplierSupplier = DefaultDataStoreSyncSupplier.instance();
-        }
-        this.modelNames =
-            ForEach.inCollection(
-                this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider).values(),
-                ModelSchema::getName
-            ).toArray(new String[0]);
+        this.dataStoreSyncSupplierSupplier = builder.dataStoreSyncSupplier;
     }
 
     /**
@@ -118,7 +108,7 @@ final class SyncProcessor {
     Completable hydrate() {
         final List<Completable> hydrationTasks = new ArrayList<>();
         List<ModelSchema> modelSchemas = new ArrayList<>(
-            this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider).values());
+            this.dataStoreSyncSupplierSupplier.get().getModels(this.modelProvider).values());
 
         // And sort them all, according to their model's topological order,
         // So that when we save them, the references will exist.
@@ -134,6 +124,11 @@ final class SyncProcessor {
                 // This is where we trigger the syncQueriesStarted event since
                 // doOnSubscribe means that all upstream hydration tasks
                 // have started.
+                String[] modelNames =
+                    ForEach.inCollection(
+                        this.dataStoreSyncSupplierSupplier.get().getModels(this.modelProvider).values(),
+                        ModelSchema::getName
+                    ).toArray(new String[0]);
                 Amplify.Hub.publish(HubChannel.DATASTORE,
                     HubEvent.create(DataStoreChannelEventName.SYNC_QUERIES_STARTED,
                         new SyncQueriesStartedEvent(modelNames)
@@ -324,7 +319,7 @@ final class SyncProcessor {
      */
     public static final class Builder implements ModelProviderStep, ModelSchemaRegistryStep,
             SyncTimeRegistryStep, AppSyncStep, MergerStep, DataStoreConfigurationProviderStep,
-            QueryPredicateProviderStep, BuildStep {
+            QueryPredicateProviderStep, DataStoreSyncSupplierStep, BuildStep {
         private ModelProvider modelProvider;
         private ModelSchemaRegistry modelSchemaRegistry;
         private SyncTimeRegistry syncTimeRegistry;
@@ -332,6 +327,7 @@ final class SyncProcessor {
         private Merger merger;
         private DataStoreConfigurationProvider dataStoreConfigurationProvider;
         private QueryPredicateProvider queryPredicateProvider;
+        private Supplier<DataStoreSyncSupplier> dataStoreSyncSupplier;
 
         @NonNull
         @Override
@@ -376,10 +372,18 @@ final class SyncProcessor {
             return Builder.this;
         }
 
+
         @NonNull
         @Override
-        public BuildStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider) {
+        public DataStoreSyncSupplierStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider) {
             this.queryPredicateProvider = Objects.requireNonNull(queryPredicateProvider);
+            return Builder.this;
+        }
+
+        @NonNull
+        @Override
+        public BuildStep dataStoreSyncSupplier(Supplier<DataStoreSyncSupplier> dataStoreSyncSupplier) {
+            this.dataStoreSyncSupplier = Objects.requireNonNull(dataStoreSyncSupplier);
             return Builder.this;
         }
 
@@ -423,7 +427,12 @@ final class SyncProcessor {
 
     interface QueryPredicateProviderStep {
         @NonNull
-        BuildStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider);
+        DataStoreSyncSupplierStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider);
+    }
+
+    interface DataStoreSyncSupplierStep {
+        @NonNull
+        BuildStep dataStoreSyncSupplier(Supplier<DataStoreSyncSupplier> dataStoreSyncSupplier);
     }
 
     interface BuildStep {
