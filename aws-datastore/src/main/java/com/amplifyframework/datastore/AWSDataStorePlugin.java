@@ -269,6 +269,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             );
     }
 
+    public void restartMutationProcessor() {
+        orchestrator.restartMutationProcessor();
+    }
+
     /**
      * {@inheritDoc}
      */

@@ -398,6 +398,13 @@ public final class Orchestrator {
         mutationProcessor.stopDrainingMutationOutbox();
     }
 
+    public void restartMutationProcessor() {
+        LOG.debug("Restarting mutation processor...");
+        mutationProcessor.stopDrainingMutationOutbox();
+        mutationOutbox.load();
+        mutationProcessor.startDrainingMutationOutbox();
+    }
+
     /**
      * Manually hydrate.
      *
