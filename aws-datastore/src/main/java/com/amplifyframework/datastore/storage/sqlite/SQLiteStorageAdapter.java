@@ -17,6 +17,7 @@ package com.amplifyframework.datastore.storage.sqlite;
 
 import android.content.Context;
 import android.database.Cursor;
+import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
 import androidx.annotation.NonNull;
@@ -761,11 +762,15 @@ public final class SQLiteStorageAdapter implements LocalStorageAdapter {
                     break;
                 case THROW_EXCEPTION:
                     // executeInsert returns id if successful, -1 otherwise.
-                    if (compiledSqlStatement.executeInsert() == -1) {
-                        problem = new DataStoreException(
-                            "Failed to insert any item in to database.",
-                            "This is likely a bug; please report to AWS."
-                        );
+                    try {
+                        if (compiledSqlStatement.executeInsert() == -1) {
+                            problem = new DataStoreException(
+                                "Failed to insert any item in to database.",
+                                "This is likely a bug; please report to AWS."
+                            );
+                        }
+                    } catch (SQLiteConstraintException error) {
+                        LOG.error("Unique key constraint issue", error);
                     }
                     break;
                 default:
