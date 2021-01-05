@@ -169,6 +169,11 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
         );
     }
 
+    public CountDownLatch categoryInitializationsPending() {
+        return categoryInitializationsPending;
+    }
+
+
     /**
      * {@inheritDoc}
      */
