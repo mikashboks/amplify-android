@@ -41,11 +41,12 @@ public final class DataStoreConfiguration {
     static final long DEFAULT_SYNC_INTERVAL_MINUTES = TimeUnit.DAYS.toMinutes(1);
     @VisibleForTesting
     static final int DEFAULT_SYNC_MAX_RECORDS = 10_000;
-    @VisibleForTesting 
+    @VisibleForTesting
     static final int DEFAULT_SYNC_PAGE_SIZE = 1_000;
 
     private final DataStoreErrorHandler errorHandler;
     private final DataStoreConflictHandler conflictHandler;
+    private final DataStoreSyncSupplier dataStoreSyncSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private final Map<String, DataStoreSyncExpression> syncExpressions;
@@ -58,6 +59,7 @@ public final class DataStoreConfiguration {
         this.syncPageSize = builder.syncPageSize;
         this.syncIntervalInMinutes = builder.syncIntervalInMinutes;
         this.syncExpressions = builder.syncExpressions;
+        this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
     }
 
     /**
@@ -108,6 +110,7 @@ public final class DataStoreConfiguration {
         return builder()
             .errorHandler(errorHandler)
             .conflictHandler(DataStoreConflictHandler.alwaysApplyRemote())
+            .dataStoreSyncSupplier(DefaultDataStoreSyncSupplier.instance())
             .syncInterval(DEFAULT_SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .syncPageSize(DEFAULT_SYNC_PAGE_SIZE)
             .syncMaxRecords(DEFAULT_SYNC_MAX_RECORDS)
@@ -131,6 +134,8 @@ public final class DataStoreConfiguration {
     public DataStoreConflictHandler getConflictHandler() {
         return this.conflictHandler;
     }
+
+    public DataStoreSyncSupplier getDataStoreSyncSupplier() { return this.dataStoreSyncSupplier; }
 
     /**
      * Get the sync interval, expressed in milliseconds. The sync interval is the amount of
@@ -199,6 +204,9 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getConflictHandler(), that.getConflictHandler())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getDataStoreSyncSupplier(), that.getDataStoreSyncSupplier())) {
+            return false;
+        }
         if (!ObjectsCompat.equals(getSyncMaxRecords(), that.getSyncMaxRecords())) {
             return false;
         }
@@ -218,6 +226,7 @@ public final class DataStoreConfiguration {
     public int hashCode() {
         int result = getErrorHandler() != null ? getErrorHandler().hashCode() : 0;
         result = 31 * result + (getConflictHandler() != null ? getConflictHandler().hashCode() : 0);
+        result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
         result = 31 * result + (getSyncMaxRecords() != null ? getSyncMaxRecords().hashCode() : 0);
         result = 31 * result + (getSyncPageSize() != null ? getSyncPageSize().hashCode() : 0);
         result = 31 * result + (getSyncIntervalInMinutes() != null ? getSyncIntervalInMinutes().hashCode() : 0);
@@ -230,6 +239,7 @@ public final class DataStoreConfiguration {
         return "DataStoreConfiguration{" +
             "errorHandler=" + errorHandler +
             ", conflictHandler=" + conflictHandler +
+            ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
             ", syncMaxRecords=" + syncMaxRecords +
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
@@ -251,6 +261,7 @@ public final class DataStoreConfiguration {
         private boolean ensureDefaults;
         private JSONObject pluginJson;
         private DataStoreConfiguration userProvidedConfiguration;
+        private DataStoreSyncSupplier dataStoreSyncSupplier;
 
         private Builder() {
             this.errorHandler = DefaultDataStoreErrorHandler.instance();
@@ -264,6 +275,12 @@ public final class DataStoreConfiguration {
             this.pluginJson = pluginJson;
             this.userProvidedConfiguration = userProvidedConfiguration;
             this.ensureDefaults = true;
+        }
+
+        @NonNull
+        public Builder dataStoreSyncSupplier(@NonNull DataStoreSyncSupplier dataStoreSyncSupplier) {
+            this.dataStoreSyncSupplier = Objects.requireNonNull(dataStoreSyncSupplier);
+            return Builder.this;
         }
 
         /**
@@ -385,6 +402,7 @@ public final class DataStoreConfiguration {
             if (userProvidedConfiguration == null) {
                 return;
             }
+            dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
             conflictHandler = userProvidedConfiguration.getConflictHandler();
             syncIntervalInMinutes = getValueOrDefault(
@@ -419,6 +437,9 @@ public final class DataStoreConfiguration {
                 syncIntervalInMinutes = getValueOrDefault(syncIntervalInMinutes, DEFAULT_SYNC_INTERVAL_MINUTES);
                 syncMaxRecords = getValueOrDefault(syncMaxRecords, DEFAULT_SYNC_MAX_RECORDS);
                 syncPageSize = getValueOrDefault(syncPageSize, DEFAULT_SYNC_PAGE_SIZE);
+                dataStoreSyncSupplier = getValueOrDefault(
+                    dataStoreSyncSupplier,
+                    DefaultDataStoreSyncSupplier.instance());
             }
             return new DataStoreConfiguration(this);
         }
