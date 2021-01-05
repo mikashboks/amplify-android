@@ -71,7 +71,6 @@ final class SyncProcessor {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
 
     private static final int SYNC_SUBSCRIPTION_SWITCH_MILLISECONDS = 100;
-    private final ConcurrentLinkedQueue<String> hydratedModels = new ConcurrentLinkedQueue<>();
     private final ModelProvider modelProvider;
     private final ModelSchemaRegistry modelSchemaRegistry;
     private final SyncTimeRegistry syncTimeRegistry;
@@ -116,7 +115,7 @@ final class SyncProcessor {
             TopologicalOrdering.forRegisteredModels(modelSchemaRegistry, modelProvider);
         Collections.sort(modelSchemas, ordering::compare);
         for (ModelSchema schema : modelSchemas) {
-            hydrationTasks.add(createHydrationTask(schema));
+            hydrationTasks.add(createHydrationTask(schema, new ConcurrentLinkedQueue<>()));
         }
 
         return Completable.merge(hydrationTasks)
@@ -142,7 +141,7 @@ final class SyncProcessor {
             });
     }
 
-    private Completable createHydrationTask(ModelSchema schema) {
+    private Completable createHydrationTask(ModelSchema schema, ConcurrentLinkedQueue<String> hydratedModels) {
         ModelSyncMetricsAccumulator metricsAccumulator = new ModelSyncMetricsAccumulator(schema.getName());
 
         List<String> dependencies = new ArrayList<>(
