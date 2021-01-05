@@ -27,6 +27,7 @@ import com.amplifyframework.datastore.AWSDataStorePlugin;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
@@ -126,6 +127,16 @@ public final class Orchestrator {
                 .modelProvider(modelProvider)
                 .merger(merger)
                 .queryPredicateProvider(queryPredicateProvider)
+            .dataStoreSubscriptionsSupplier(
+                () -> {
+                    try {
+                        return dataStoreConfigurationProvider.getConfiguration().getDataStoreSubscriptionsSupplier();
+                    } catch (Exception error) {
+                        LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                        return DefaultDataStoreSubscriptionsSupplier.instance();
+                    }
+                }
+            )
                 .onFailure(this::onApiSyncFailure)
                 .build();
         this.storageObserver = new StorageObserver(localStorageAdapter, mutationOutbox);

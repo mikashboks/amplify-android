@@ -47,6 +47,7 @@ public final class DataStoreConfiguration {
     private final DataStoreErrorHandler errorHandler;
     private final DataStoreConflictHandler conflictHandler;
     private final DataStoreSyncSupplier dataStoreSyncSupplier;
+    private final DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private final Map<String, DataStoreSyncExpression> syncExpressions;
@@ -60,6 +61,8 @@ public final class DataStoreConfiguration {
         this.syncIntervalInMinutes = builder.syncIntervalInMinutes;
         this.syncExpressions = builder.syncExpressions;
         this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
+        this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
+
     }
 
     /**
@@ -111,6 +114,7 @@ public final class DataStoreConfiguration {
             .errorHandler(errorHandler)
             .conflictHandler(DataStoreConflictHandler.alwaysApplyRemote())
             .dataStoreSyncSupplier(DefaultDataStoreSyncSupplier.instance())
+            .dataStoreSubscriptionsSupplier(DefaultDataStoreSubscriptionsSupplier.instance())
             .syncInterval(DEFAULT_SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .syncPageSize(DEFAULT_SYNC_PAGE_SIZE)
             .syncMaxRecords(DEFAULT_SYNC_MAX_RECORDS)
@@ -136,6 +140,10 @@ public final class DataStoreConfiguration {
     }
 
     public DataStoreSyncSupplier getDataStoreSyncSupplier() { return this.dataStoreSyncSupplier; }
+
+    public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
+        return this.dataStoreSubscriptionsSupplier;
+    }
 
     /**
      * Get the sync interval, expressed in milliseconds. The sync interval is the amount of
@@ -207,6 +215,9 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getDataStoreSyncSupplier(), that.getDataStoreSyncSupplier())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getDataStoreSubscriptionsSupplier(), that.getDataStoreSubscriptionsSupplier())) {
+            return false;
+        }
         if (!ObjectsCompat.equals(getSyncMaxRecords(), that.getSyncMaxRecords())) {
             return false;
         }
@@ -227,6 +238,7 @@ public final class DataStoreConfiguration {
         int result = getErrorHandler() != null ? getErrorHandler().hashCode() : 0;
         result = 31 * result + (getConflictHandler() != null ? getConflictHandler().hashCode() : 0);
         result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
+        result = 31 * result + (getDataStoreSubscriptionsSupplier() != null ? getDataStoreSubscriptionsSupplier().hashCode() : 0);
         result = 31 * result + (getSyncMaxRecords() != null ? getSyncMaxRecords().hashCode() : 0);
         result = 31 * result + (getSyncPageSize() != null ? getSyncPageSize().hashCode() : 0);
         result = 31 * result + (getSyncIntervalInMinutes() != null ? getSyncIntervalInMinutes().hashCode() : 0);
@@ -240,6 +252,7 @@ public final class DataStoreConfiguration {
             "errorHandler=" + errorHandler +
             ", conflictHandler=" + conflictHandler +
             ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
+            ", dataStoreSubscriptionsSupplier=" + dataStoreSubscriptionsSupplier +
             ", syncMaxRecords=" + syncMaxRecords +
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
@@ -262,6 +275,7 @@ public final class DataStoreConfiguration {
         private JSONObject pluginJson;
         private DataStoreConfiguration userProvidedConfiguration;
         private DataStoreSyncSupplier dataStoreSyncSupplier;
+        private DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
 
         private Builder() {
             this.errorHandler = DefaultDataStoreErrorHandler.instance();
@@ -280,6 +294,12 @@ public final class DataStoreConfiguration {
         @NonNull
         public Builder dataStoreSyncSupplier(@NonNull DataStoreSyncSupplier dataStoreSyncSupplier) {
             this.dataStoreSyncSupplier = Objects.requireNonNull(dataStoreSyncSupplier);
+            return Builder.this;
+        }
+
+        @NonNull
+        public Builder dataStoreSubscriptionsSupplier(@NonNull DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier) {
+            this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
             return Builder.this;
         }
 
@@ -402,6 +422,7 @@ public final class DataStoreConfiguration {
             if (userProvidedConfiguration == null) {
                 return;
             }
+            dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
             conflictHandler = userProvidedConfiguration.getConflictHandler();
@@ -440,6 +461,9 @@ public final class DataStoreConfiguration {
                 dataStoreSyncSupplier = getValueOrDefault(
                     dataStoreSyncSupplier,
                     DefaultDataStoreSyncSupplier.instance());
+                dataStoreSubscriptionsSupplier = getValueOrDefault(
+                    dataStoreSubscriptionsSupplier,
+                    DefaultDataStoreSubscriptionsSupplier.instance());
             }
             return new DataStoreConfiguration(this);
         }
