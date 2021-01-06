@@ -20,6 +20,7 @@ import androidx.annotation.NonNull;
 import com.amplifyframework.auth.AuthException;
 import com.amplifyframework.auth.AuthSession;
 import com.amplifyframework.auth.result.AuthSessionResult;
+import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.Consumer;
 
 import com.amazonaws.auth.AWSCredentials;
@@ -93,7 +94,12 @@ final class MobileClientSessionAdapter {
                                 .getString("sub")
                     );
                 } catch (JSONException error) {
-                    userSubResult = AuthSessionResult.failure(new AuthException.UnknownException(error));
+                    try {
+                        userSubResult = AuthSessionResult.success(Amplify.Auth.getPlugin("awsCognitoAuthPlugin")
+                            .getCurrentUser().getUserId());
+                    } catch (Exception error2) {
+                        userSubResult = AuthSessionResult.failure(new AuthException.UnknownException(error));
+                    }
                 }
 
                 AuthSessionResult<AWSCognitoUserPoolTokens> tokensResult =

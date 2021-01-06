@@ -122,7 +122,7 @@ public final class AWSCognitoAuthPlugin extends AuthPlugin<AWSMobileClient> {
     public AWSCognitoAuthPlugin() {
         this.awsMobileClient = AWSMobileClient.getInstance();
     }
-    
+
     @VisibleForTesting
     AWSCognitoAuthPlugin(AWSMobileClient instance, String userId) {
         this.awsMobileClient = instance;
@@ -1106,7 +1106,12 @@ public final class AWSCognitoAuthPlugin extends AuthPlugin<AWSMobileClient> {
                     .getPayload(token)
                     .getString(COGNITO_USER_ID_ATTRIBUTE);
         } catch (JSONException error) {
-            return null;
+            try {
+                return Amplify.Auth.getPlugin("awsCognitoAuthPlugin")
+                    .getCurrentUser().getUserId();
+            } catch (Exception error2) {
+                return null;
+            }
         }
     }
 

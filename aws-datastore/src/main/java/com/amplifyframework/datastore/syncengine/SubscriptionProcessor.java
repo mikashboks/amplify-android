@@ -67,7 +67,7 @@ import io.reactivex.rxjava3.subjects.ReplaySubject;
  */
 final class SubscriptionProcessor {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
-    private static final long TIMEOUT_SECONDS_PER_MODEL = 30; // acount for internet issue here +
+    private static final long TIMEOUT_SECONDS_PER_MODEL = 5; // acount for internet issue here +
     private static final long NETWORK_OP_TIMEOUT_SECONDS = 30;
 
     private final AppSync appSync;
