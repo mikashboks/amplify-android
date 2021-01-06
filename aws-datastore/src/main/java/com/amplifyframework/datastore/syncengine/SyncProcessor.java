@@ -105,6 +105,7 @@ final class SyncProcessor {
      * @return An Rx {@link Completable} which can be used to perform the operation.
      */
     Completable hydrate() {
+        final ConcurrentLinkedQueue<String> hydratedModels = new ConcurrentLinkedQueue<>();
         final List<Completable> hydrationTasks = new ArrayList<>();
         List<ModelSchema> modelSchemas = new ArrayList<>(
             this.dataStoreSyncSupplierSupplier.get().getModels(this.modelProvider).values());
@@ -115,7 +116,7 @@ final class SyncProcessor {
             TopologicalOrdering.forRegisteredModels(modelSchemaRegistry, modelProvider);
         Collections.sort(modelSchemas, ordering::compare);
         for (ModelSchema schema : modelSchemas) {
-            hydrationTasks.add(createHydrationTask(schema, new ConcurrentLinkedQueue<>()));
+            hydrationTasks.add(createHydrationTask(schema, hydratedModels));
         }
 
         return Completable.merge(hydrationTasks)
@@ -141,7 +142,7 @@ final class SyncProcessor {
             });
     }
 
-    private Completable createHydrationTask(ModelSchema schema, ConcurrentLinkedQueue<String> hydratedModels) {
+    private Completable createHydrationTask(ModelSchema schema, ConcurrentLinkedQueue<String> hydratedModels ) {
         ModelSyncMetricsAccumulator metricsAccumulator = new ModelSyncMetricsAccumulator(schema.getName());
 
         List<String> dependencies = new ArrayList<>(

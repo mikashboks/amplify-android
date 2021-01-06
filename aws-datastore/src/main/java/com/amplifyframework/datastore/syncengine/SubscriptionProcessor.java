@@ -67,8 +67,8 @@ import io.reactivex.rxjava3.subjects.ReplaySubject;
  */
 final class SubscriptionProcessor {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
-    private static final long TIMEOUT_SECONDS_PER_MODEL = 2;
-    private static final long NETWORK_OP_TIMEOUT_SECONDS = 10;
+    private static final long TIMEOUT_SECONDS_PER_MODEL = 30; // acount for internet issue here +
+    private static final long NETWORK_OP_TIMEOUT_SECONDS = 30;
 
     private final AppSync appSync;
     private final ModelProvider modelProvider;
@@ -126,7 +126,7 @@ final class SubscriptionProcessor {
 
         Set<Observable<SubscriptionEvent<? extends Model>>> subscriptions = new HashSet<>();
         for (SubscriptionModel subscriptionModel : subscriptionModelTypes) {
-            LOG.debug("Requesting subscription for " + subscriptionModel);
+            LOG.debug("Requesting subscription for "  + subscriptionModel.getSubscriptionType().name() + "-" + subscriptionModel.getModelSchema().getName());
             subscriptions.add(subscriptionObservable(
                 appSync, subscriptionModel.getSubscriptionType(), latch, subscriptionModel.getModelSchema()));
         }
