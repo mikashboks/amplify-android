@@ -49,6 +49,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
@@ -67,6 +70,8 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
 final class SyncProcessor {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
 
+    private static final int SYNC_SUBSCRIPTION_SWITCH_MILLISECONDS = 100;
+    private final ConcurrentLinkedQueue<String> hydratedModels = new ConcurrentLinkedQueue<>();
     private final ModelProvider modelProvider;
     private final ModelSchemaRegistry modelSchemaRegistry;
     private final SyncTimeRegistry syncTimeRegistry;
@@ -125,7 +130,7 @@ final class SyncProcessor {
             hydrationTasks.add(createHydrationTask(schema));
         }
 
-        return Completable.concat(hydrationTasks)
+        return Completable.merge(hydrationTasks)
             .doOnSubscribe(ignore -> {
                 // This is where we trigger the syncQueriesStarted event since
                 // doOnSubscribe means that all upstream hydration tasks
@@ -145,7 +150,34 @@ final class SyncProcessor {
 
     private Completable createHydrationTask(ModelSchema schema) {
         ModelSyncMetricsAccumulator metricsAccumulator = new ModelSyncMetricsAccumulator(schema.getName());
+
+        List<String> dependencies = new ArrayList<>(
+            schema.getAssociations().values().stream()
+                .filter((i) -> i.isOwner())
+                .map((i) -> i.getAssociatedType())
+                .collect(Collectors.toList()));
+
+        LOG.debug("Sync dependencies for model:" + schema.getName() + " - "
+            + dependencies.toString());
+
+
         return syncTimeRegistry.lookupLastSyncTime(schema.getName())
+            .delaySubscription(
+                Flowable.interval(SYNC_SUBSCRIPTION_SWITCH_MILLISECONDS, TimeUnit.MILLISECONDS)
+                    .doOnNext((i) -> {
+                        LOG.verbose("Waiting to meet dependency for " + schema.getName()
+                            + "\n dependencies: " + dependencies.toString()
+                            + "\n hydrated: " + hydratedModels.toString()
+                        );
+                    })
+                    .filter((i) ->
+                        dependencies.isEmpty() || hydratedModels.containsAll(dependencies))
+                    .doOnNext((i) ->
+                        LOG.debug("Dependencies met for " + schema.getName() + " current list: "
+                            + hydratedModels.toString()
+                        )
+                    ).take(1)
+            )
             .map(this::filterOutOldSyncTimes)
             // And for each, perform a sync. The network response will contain an Iterable<ModelWithMetadata<T>>
             .flatMap(lastSyncTime -> {
@@ -178,8 +210,15 @@ final class SyncProcessor {
                 ));
             })
             .doOnComplete(() ->
-                LOG.info("Successfully sync'd down model state from cloud.")
-            );
+                LOG.info("Successfully sync'd down model state from cloud for model " + schema.getName())
+            )
+            .doFinally(() -> {
+                hydratedModels.add(schema.getName());
+                LOG.debug("Adding to hydrated model list :" + schema.getName() +
+                    " \n current list: " + hydratedModels.toString()
+                );
+            })
+            .subscribeOn(Schedulers.io());
     }
 
     /**
