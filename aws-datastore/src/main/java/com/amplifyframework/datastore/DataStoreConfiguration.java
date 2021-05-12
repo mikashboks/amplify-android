@@ -47,6 +47,7 @@ public final class DataStoreConfiguration {
     private final DataStoreErrorHandler errorHandler;
     private final DataStoreConflictHandler conflictHandler;
     private final DataStoreSyncSupplier dataStoreSyncSupplier;
+    private final DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private final Map<String, DataStoreSyncExpression> syncExpressions;
@@ -60,6 +61,7 @@ public final class DataStoreConfiguration {
         this.syncIntervalInMinutes = builder.syncIntervalInMinutes;
         this.syncExpressions = builder.syncExpressions;
         this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
+        this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
     }
 
     /**
@@ -111,6 +113,7 @@ public final class DataStoreConfiguration {
             .errorHandler(errorHandler)
             .conflictHandler(DataStoreConflictHandler.alwaysApplyRemote())
             .dataStoreSyncSupplier(DefaultDataStoreSyncSupplier.instance())
+            .dataStoreSubscriptionsSupplier(DefaultDataStoreSubscriptionsSupplier.instance())
             .syncInterval(DEFAULT_SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .syncPageSize(DEFAULT_SYNC_PAGE_SIZE)
             .syncMaxRecords(DEFAULT_SYNC_MAX_RECORDS)
@@ -118,6 +121,10 @@ public final class DataStoreConfiguration {
     }
 
     public DataStoreSyncSupplier getDataStoreSyncSupplier() { return this.dataStoreSyncSupplier; }
+
+    public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
+        return this.dataStoreSubscriptionsSupplier;
+    }
 
     /**
      * Gets the data store error handler.
@@ -219,6 +226,9 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getDataStoreSyncSupplier(), that.getDataStoreSyncSupplier())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getDataStoreSubscriptionsSupplier(), that.getDataStoreSubscriptionsSupplier())) {
+            return false;
+        }
         return true;
     }
 
@@ -231,6 +241,7 @@ public final class DataStoreConfiguration {
         result = 31 * result + (getSyncIntervalInMinutes() != null ? getSyncIntervalInMinutes().hashCode() : 0);
         result = 31 * result + (getSyncExpressions() != null ? getSyncExpressions().hashCode() : 0);
         result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
+        result = 31 * result + (getDataStoreSubscriptionsSupplier() != null ? getDataStoreSubscriptionsSupplier().hashCode() : 0);
         return result;
     }
 
@@ -240,6 +251,7 @@ public final class DataStoreConfiguration {
             "errorHandler=" + errorHandler +
             ", conflictHandler=" + conflictHandler +
             ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
+            ", dataStoreSubscriptionsSupplier=" + dataStoreSubscriptionsSupplier +
             ", syncMaxRecords=" + syncMaxRecords +
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
@@ -262,6 +274,7 @@ public final class DataStoreConfiguration {
         private JSONObject pluginJson;
         private DataStoreConfiguration userProvidedConfiguration;
         private DataStoreSyncSupplier dataStoreSyncSupplier;
+        private DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
 
         private Builder() {
             this.errorHandler = DefaultDataStoreErrorHandler.instance();
@@ -358,6 +371,12 @@ public final class DataStoreConfiguration {
             return Builder.this;
         }
 
+        @NonNull
+        public Builder dataStoreSubscriptionsSupplier(@NonNull DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier) {
+            this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
+            return Builder.this;
+        }
+
         private void populateSettingsFromJson() throws DataStoreException {
             if (pluginJson == null) {
                 return;
@@ -403,6 +422,7 @@ public final class DataStoreConfiguration {
                 return;
             }
             dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
+            dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
             conflictHandler = userProvidedConfiguration.getConflictHandler();
             syncIntervalInMinutes = getValueOrDefault(
@@ -440,6 +460,9 @@ public final class DataStoreConfiguration {
                 dataStoreSyncSupplier = getValueOrDefault(
                     dataStoreSyncSupplier,
                     DefaultDataStoreSyncSupplier.instance());
+                dataStoreSubscriptionsSupplier = getValueOrDefault(
+                    dataStoreSubscriptionsSupplier,
+                    DefaultDataStoreSubscriptionsSupplier.instance());
             }
             return new DataStoreConfiguration(this);
         }
