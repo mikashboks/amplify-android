@@ -400,6 +400,13 @@ public final class Orchestrator {
         ));
     }
 
+    public void restartMutationProcessor() {
+        LOG.debug("Restarting mutation processor...");
+        mutationProcessor.stopDrainingMutationOutbox();
+        mutationOutbox.load();
+        mutationProcessor.startDrainingMutationOutbox();
+    }
+
     /**
      * The current state of the Orchestrator.
      */

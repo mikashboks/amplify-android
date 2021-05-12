@@ -555,4 +555,8 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
     public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
         return orchestrator.saveDirectlyToLocalStorage(model);
     }
+
+    public void restartMutationProcessor() {
+        orchestrator.restartMutationProcessor();
+    }
 }
