@@ -16,8 +16,10 @@
 package com.amplifyframework.datastore.syncengine;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.amplifyframework.api.graphql.GraphQLResponse;
+import com.amplifyframework.core.Action;
 import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.Consumer;
 import com.amplifyframework.core.model.Model;
@@ -87,7 +89,7 @@ final class MutationProcessor {
      * we have to keep the mutation in the outbox, so that we can try to publish
      * it again later, when network conditions become favorable again.
      */
-    void startDrainingMutationOutbox() {
+    void startDrainingMutationOutbox(@Nullable Action onPipelineBroken) {
         ongoingOperationsDisposable.add(mutationOutbox.events()
             .doOnSubscribe(disposable ->
                 LOG.info(
@@ -101,9 +103,18 @@ final class MutationProcessor {
             .flatMapCompletable(event -> drainMutationOutbox())
             .subscribe(
                 () -> LOG.warn("Observation of mutation outbox was completed."),
-                error -> LOG.warn("Error ended observation of mutation outbox: ", error)
+                error -> {
+                    LOG.warn("Error ended observation of mutation outbox: ", error);
+                    if (onPipelineBroken != null) {
+                        onPipelineBroken.call();
+                    }
+                }
             )
         );
+    }
+
+    void startDrainingMutationOutbox() {
+        startDrainingMutationOutbox(null);
     }
 
     private Completable drainMutationOutbox() {
@@ -268,7 +279,9 @@ final class MutationProcessor {
         final T updatedItem = mutation.getMutatedItem();
         final ModelSchema updatedItemSchema =
             this.modelSchemaRegistry.getModelSchemaForModelClass(updatedItem.getModelName());
-        return versionRepository.findModelVersion(updatedItem).flatMap(version ->
+        return versionRepository.findModelVersion(updatedItem)
+            .onErrorReturnItem(-1) // form of server win?
+            .flatMap(version ->
             publishWithStrategy(mutation, (model, onSuccess, onError) ->
                 appSync.update(model, updatedItemSchema, version, mutation.getPredicate(), onSuccess, onError)
             )
@@ -289,7 +302,9 @@ final class MutationProcessor {
         final T deletedItem = mutation.getMutatedItem();
         final ModelSchema deletedItemSchema =
             this.modelSchemaRegistry.getModelSchemaForModelClass(deletedItem.getModelName());
-        return versionRepository.findModelVersion(deletedItem).flatMap(version ->
+        return versionRepository.findModelVersion(deletedItem)
+            .onErrorReturnItem(-1) // form of server win?
+            .flatMap(version ->
             publishWithStrategy(mutation, (model, onSuccess, onError) ->
                 appSync.delete(
                     deletedItem, deletedItemSchema, version, mutation.getPredicate(), onSuccess, onError

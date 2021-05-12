@@ -337,7 +337,7 @@ public final class Orchestrator {
                 }
 
                 LOG.debug("Draining outbox...");
-                mutationProcessor.startDrainingMutationOutbox();
+                mutationProcessor.startDrainingMutationOutbox(this::stopApiSync);
 
                 subscriptionProcessor.startDrainingMutationBuffer();
 
