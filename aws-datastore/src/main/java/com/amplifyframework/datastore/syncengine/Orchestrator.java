@@ -408,6 +408,30 @@ public final class Orchestrator {
     }
 
     /**
+     * Manually hydrate.
+     *
+     * */
+    public synchronized void triggerHydrate() {
+        disposables.add(
+            Completable.defer(() -> {
+                if (currentState.get() != State.SYNC_VIA_API) {
+                    LOG.warn("Orchestrator not in SYNC_VIA_API so not hydrating");
+                    return Completable.complete();
+                } else {
+                    return syncProcessor.hydrate();
+                }
+            })
+                .doOnSubscribe(subscriber -> LOG.info("Attempting to manually triggering hydrate..."))
+                .doOnError(failure -> LOG.warn("Unable to manually trigger hydration", failure))
+                .subscribe()
+        );
+    }
+
+    public Completable hydrate() {
+        return Completable.fromAction(this::triggerHydrate);
+    }
+
+    /**
      * The current state of the Orchestrator.
      */
     public enum State {

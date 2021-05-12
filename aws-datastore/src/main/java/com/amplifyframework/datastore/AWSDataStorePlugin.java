@@ -563,4 +563,15 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
     public CountDownLatch categoryInitializationsPending() {
         return categoryInitializationsPending;
     }
+
+    public synchronized void hydrate(@NonNull Action onComplete, @NonNull Consumer<DataStoreException> onError) {
+        waitForInitialization()
+            .andThen(orchestrator.hydrate())
+            .subscribeOn(Schedulers.io())
+            .subscribe(
+                onComplete::call,
+                error -> onError.accept(new DataStoreException(
+                    "Failed to manually hydrate DataStore.", error, "Retry."))
+            );
+    }
 }
