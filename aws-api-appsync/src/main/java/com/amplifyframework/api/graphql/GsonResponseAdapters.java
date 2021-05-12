@@ -89,9 +89,11 @@ public final class GsonResponseAdapters {
 
             // Because typeOfT is ParameterizedType we can be sure this is a safe cast.
             final Type templateClassType = ((ParameterizedType) typeOfT).getActualTypeArguments()[0];
-            if (shouldSkipQueryLevel(templateClassType)) {
-                jsonData = skipQueryLevel(jsonData);
-            }
+            // not skipping breaks our code we can fix and bring it back later
+//            if (shouldSkipQueryLevel(templateClassType)) {
+//                jsonData = skipQueryLevel(jsonData);
+//            }
+            jsonData = skipQueryLevel(jsonData);
 
             if (jsonData == null || jsonData.isJsonNull()) {
                 return new GraphQLResponse<>(null, errors);
