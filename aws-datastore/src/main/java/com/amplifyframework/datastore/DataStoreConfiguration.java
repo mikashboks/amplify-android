@@ -48,6 +48,7 @@ public final class DataStoreConfiguration {
     private final DataStoreConflictHandler conflictHandler;
     private final DataStoreSyncSupplier dataStoreSyncSupplier;
     private final DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
+    private final DataStoreTargetStateSupplier dataStoreTargetStateSupplier;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
     private final Map<String, DataStoreSyncExpression> syncExpressions;
@@ -62,6 +63,7 @@ public final class DataStoreConfiguration {
         this.syncExpressions = builder.syncExpressions;
         this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
         this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
+        this.dataStoreTargetStateSupplier = builder.dataStoreTargetStateSupplier;
     }
 
     /**
@@ -124,6 +126,10 @@ public final class DataStoreConfiguration {
 
     public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
         return this.dataStoreSubscriptionsSupplier;
+    }
+
+    public DataStoreTargetStateSupplier getDataStoreTargetStateSupplier() {
+        return this.dataStoreTargetStateSupplier;
     }
 
     /**
@@ -229,6 +235,9 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getDataStoreSubscriptionsSupplier(), that.getDataStoreSubscriptionsSupplier())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getDataStoreTargetStateSupplier(), that.getDataStoreTargetStateSupplier())) {
+            return false;
+        }
         return true;
     }
 
@@ -242,6 +251,7 @@ public final class DataStoreConfiguration {
         result = 31 * result + (getSyncExpressions() != null ? getSyncExpressions().hashCode() : 0);
         result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
         result = 31 * result + (getDataStoreSubscriptionsSupplier() != null ? getDataStoreSubscriptionsSupplier().hashCode() : 0);
+        result = 31 * result + (getDataStoreTargetStateSupplier() != null ? getDataStoreTargetStateSupplier().hashCode() : 0);
         return result;
     }
 
@@ -252,6 +262,7 @@ public final class DataStoreConfiguration {
             ", conflictHandler=" + conflictHandler +
             ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
             ", dataStoreSubscriptionsSupplier=" + dataStoreSubscriptionsSupplier +
+            ", dataStoreTargetStateSupplier=" + dataStoreTargetStateSupplier +
             ", syncMaxRecords=" + syncMaxRecords +
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
@@ -275,6 +286,7 @@ public final class DataStoreConfiguration {
         private DataStoreConfiguration userProvidedConfiguration;
         private DataStoreSyncSupplier dataStoreSyncSupplier;
         private DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
+        private DataStoreTargetStateSupplier dataStoreTargetStateSupplier;
 
         private Builder() {
             this.errorHandler = DefaultDataStoreErrorHandler.instance();
@@ -377,6 +389,12 @@ public final class DataStoreConfiguration {
             return Builder.this;
         }
 
+        @NonNull
+        public Builder dataStoreTargetStateSupplier(@NonNull DataStoreTargetStateSupplier dataStoreTargetStateSupplier) {
+            this.dataStoreTargetStateSupplier = Objects.requireNonNull(dataStoreTargetStateSupplier);
+            return Builder.this;
+        }
+
         private void populateSettingsFromJson() throws DataStoreException {
             if (pluginJson == null) {
                 return;
@@ -421,6 +439,7 @@ public final class DataStoreConfiguration {
             if (userProvidedConfiguration == null) {
                 return;
             }
+            dataStoreTargetStateSupplier = userProvidedConfiguration.getDataStoreTargetStateSupplier();
             dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
             dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
@@ -463,6 +482,9 @@ public final class DataStoreConfiguration {
                 dataStoreSubscriptionsSupplier = getValueOrDefault(
                     dataStoreSubscriptionsSupplier,
                     DefaultDataStoreSubscriptionsSupplier.instance());
+                dataStoreTargetStateSupplier = getValueOrDefault(
+                    dataStoreTargetStateSupplier,
+                    DefaultDataStoreTargetStateSupplier.instance());
             }
             return new DataStoreConfiguration(this);
         }
