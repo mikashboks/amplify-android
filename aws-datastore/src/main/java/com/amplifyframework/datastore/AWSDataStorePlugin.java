@@ -551,4 +551,8 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             @NonNull Action onObservationCompleted) {
         onObservationFailure.accept(new DataStoreException("Not implemented yet, buster!", "Check back later!"));
     }
+
+    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return orchestrator.saveDirectlyToLocalStorage(model);
+    }
 }

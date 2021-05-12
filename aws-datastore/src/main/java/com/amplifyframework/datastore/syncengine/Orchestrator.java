@@ -21,8 +21,10 @@ import androidx.core.util.Supplier;
 
 import com.amplifyframework.AmplifyException;
 import com.amplifyframework.core.Amplify;
+import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.core.model.ModelSchemaRegistry;
+import com.amplifyframework.core.model.query.predicate.QueryPredicates;
 import com.amplifyframework.datastore.AWSDataStorePlugin;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
@@ -30,6 +32,7 @@ import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
+import com.amplifyframework.datastore.storage.StorageItemChange;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
@@ -67,6 +70,7 @@ public final class Orchestrator {
     private final CompositeDisposable disposables;
     private final long adjustedTimeoutSeconds;
     private final Semaphore startStopSemaphore;
+    private final LocalStorageAdapter localStorageAdapter;
 
     /**
      * Constructs a new Orchestrator.
@@ -97,6 +101,7 @@ public final class Orchestrator {
         Objects.requireNonNull(appSync);
         Objects.requireNonNull(localStorageAdapter);
 
+        this.localStorageAdapter = localStorageAdapter;
         this.mutationOutbox = new PersistentMutationOutbox(localStorageAdapter);
         VersionRepository versionRepository = new VersionRepository(localStorageAdapter);
         Merger merger = new Merger(mutationOutbox, versionRepository, localStorageAdapter);
@@ -379,6 +384,20 @@ public final class Orchestrator {
         disposables.clear();
         subscriptionProcessor.stopAllSubscriptionActivity();
         mutationProcessor.stopDrainingMutationOutbox();
+    }
+
+    public <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return Completable.defer(() -> Completable.create(emitter ->
+            localStorageAdapter.save(
+                model,
+                StorageItemChange.Initiator.SYNC_ENGINE,
+                QueryPredicates.all(),
+                storageItemChange -> {
+                    emitter.onComplete();
+                },
+                emitter::onError
+            )
+        ));
     }
 
     /**
