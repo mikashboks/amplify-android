@@ -32,6 +32,8 @@ import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreErrorHandler;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DataStoreSyncSupplier;
+import com.amplifyframework.datastore.DefaultDataStoreSyncSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
 import com.amplifyframework.datastore.appsync.SerializedModel;
@@ -73,6 +75,7 @@ final class SyncProcessor {
     private final DataStoreConfigurationProvider dataStoreConfigurationProvider;
     private final String[] modelNames;
     private final QueryPredicateProvider queryPredicateProvider;
+    private DataStoreSyncSupplier dataStoreSyncSupplierSupplier;
 
     private SyncProcessor(Builder builder) {
         this.modelProvider = builder.modelProvider;
@@ -82,9 +85,17 @@ final class SyncProcessor {
         this.merger = builder.merger;
         this.dataStoreConfigurationProvider = builder.dataStoreConfigurationProvider;
         this.queryPredicateProvider = builder.queryPredicateProvider;
+        try {
+            this.dataStoreSyncSupplierSupplier = dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
+        } catch (Exception e) {
+            LOG.error("Failed to load dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier()", e);
+            this.dataStoreSyncSupplierSupplier = DefaultDataStoreSyncSupplier.instance();
+        }
         this.modelNames =
-            ForEach.inCollection(modelProvider.modelSchemas().values(), ModelSchema::getName)
-                .toArray(new String[0]);
+            ForEach.inCollection(
+                this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider).values(),
+                ModelSchema::getName
+            ).toArray(new String[0]);
     }
 
     /**
@@ -102,7 +113,8 @@ final class SyncProcessor {
      */
     Completable hydrate() {
         final List<Completable> hydrationTasks = new ArrayList<>();
-        List<ModelSchema> modelSchemas = new ArrayList<>(modelProvider.modelSchemas().values());
+        List<ModelSchema> modelSchemas = new ArrayList<>(
+            this.dataStoreSyncSupplierSupplier.getModels(this.modelProvider).values());
 
         // And sort them all, according to their model's topological order,
         // So that when we save them, the references will exist.
