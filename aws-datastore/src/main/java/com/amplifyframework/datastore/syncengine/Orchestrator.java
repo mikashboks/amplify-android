@@ -30,6 +30,7 @@ import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
+import com.amplifyframework.datastore.DefaultDataStoreSyncSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
@@ -126,6 +127,14 @@ public final class Orchestrator {
             .merger(merger)
             .dataStoreConfigurationProvider(dataStoreConfigurationProvider)
             .queryPredicateProvider(queryPredicateProvider)
+            .dataStoreSyncSupplier(() -> {
+                try {
+                    return dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
+                } catch (Exception error) {
+                    LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                    return DefaultDataStoreSyncSupplier.instance();
+                }
+            })
             .build();
         this.subscriptionProcessor = SubscriptionProcessor.builder()
                 .appSync(appSync)
