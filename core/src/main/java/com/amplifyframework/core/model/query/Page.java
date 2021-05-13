@@ -38,6 +38,10 @@ public final class Page {
         return new QueryPaginationInput(page, DEFAULT_LIMIT);
     }
 
+    public static QueryPaginationInput startingAtWithLimit(final int page, final int limit) {
+        return new QueryPaginationInput(page, limit);
+    }
+
     /**
      * Utility that creates a <code>QueryPaginationInput</code>
      * with <code>page</code> 0 and <code>limit</code> {@link #DEFAULT_LIMIT}.
