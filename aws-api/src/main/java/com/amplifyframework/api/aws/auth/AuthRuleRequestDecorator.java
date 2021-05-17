@@ -26,6 +26,7 @@ import com.amplifyframework.api.aws.sigv4.CognitoUserPoolsAuthProvider;
 import com.amplifyframework.api.aws.sigv4.DefaultCognitoUserPoolsAuthProvider;
 import com.amplifyframework.api.aws.sigv4.OidcAuthProvider;
 import com.amplifyframework.api.graphql.GraphQLRequest;
+import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.model.AuthRule;
 import com.amplifyframework.core.model.AuthStrategy;
 import com.amplifyframework.core.model.ModelOperation;
@@ -153,12 +154,17 @@ public final class AuthRuleRequestDecorator {
                     .getPayload(getAuthToken(authType))
                     .getString(identityClaim);
         } catch (JSONException error) {
-            throw new ApiException(
-                "Attempted to subscribe to a model with owner-based authorization without " + identityClaim + " " +
-                    "which was specified (or defaulted to) as the identity claim.",
-                "If you did not specify a custom identityClaim in your schema, make sure you are logged in. If " +
-                    "you did, check that the value you specified in your schema is present in the access key."
-            );
+            try {
+                return Amplify.Auth.getPlugin("awsCognitoAuthPlugin")
+                    .getCurrentUser().getUserId();
+            } catch (Exception error2) {
+                throw new ApiException(
+                    "Attempted to subscribe to a model with owner-based authorization without " + identityClaim + " " +
+                        "which was specified (or defaulted to) as the identity claim.",
+                    "If you did not specify a custom identityClaim in your schema, make sure you are logged in. If " +
+                        "you did, check that the value you specified in your schema is present in the access key."
+                );
+            }
         } catch (CognitoParameterInvalidException error) {
             throw new ApiException(
                 "Failed to parse the ID token for identity claim: " + error.getMessage(),
