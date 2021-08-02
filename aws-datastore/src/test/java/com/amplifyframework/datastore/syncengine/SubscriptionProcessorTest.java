@@ -30,6 +30,7 @@ import com.amplifyframework.core.model.ModelSchemaRegistry;
 import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.DataStoreConfiguration;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.ModelMetadata;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
@@ -96,6 +97,7 @@ public final class SubscriptionProcessorTest {
                 .modelProvider(modelProvider)
                 .merger(merger)
                 .queryPredicateProvider(queryPredicateProvider)
+                .dataStoreSubscriptionsSupplier(() -> DefaultDataStoreSubscriptionsSupplier.instance())
                 .onFailure(throwable -> { })
                 .build();
     }

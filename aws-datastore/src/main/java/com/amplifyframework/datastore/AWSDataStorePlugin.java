@@ -100,7 +100,9 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             sqliteStorageAdapter,
             AppSyncClient.via(api),
             () -> pluginConfiguration,
-            () -> api.getPlugins().isEmpty() ? Orchestrator.State.LOCAL_ONLY : Orchestrator.State.SYNC_VIA_API
+            () -> api.getPlugins().isEmpty() || pluginConfiguration == null
+                    ? Orchestrator.State.LOCAL_ONLY
+                    : pluginConfiguration.getDataStoreTargetStateSupplier().get()
         );
         this.userProvidedConfiguration = userProvidedConfiguration;
     }
@@ -605,6 +607,29 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             onObservationFailure,
             onObservationCompleted
         )), onObservationFailure);
+    }
+
+    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return orchestrator.saveDirectlyToLocalStorage(model);
+    }
+
+    public void restartMutationProcessor() {
+        orchestrator.restartMutationProcessor();
+    }
+
+    public CountDownLatch categoryInitializationsPending() {
+        return categoryInitializationsPending;
+    }
+
+    public synchronized void hydrate(@NonNull Action onComplete, @NonNull Consumer<DataStoreException> onError) {
+        waitForInitialization()
+                .andThen(orchestrator.hydrate())
+                .subscribeOn(Schedulers.io())
+                .subscribe(
+                        onComplete::call,
+                        error -> onError.accept(new DataStoreException(
+                                "Failed to manually hydrate DataStore.", error, "Retry."))
+                );
     }
 
     /**

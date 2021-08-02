@@ -116,7 +116,8 @@ public final class GsonResponseAdapters {
                 }
             }
 
-            return false;
+            // @hack: we always want to skip query level
+            return true;
         }
 
         // Skips a JSON level to get content of query, not query itself
