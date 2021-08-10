@@ -38,6 +38,7 @@ import com.amplifyframework.core.model.query.QueryOptions;
 import com.amplifyframework.core.model.query.Where;
 import com.amplifyframework.core.model.query.predicate.QueryPredicate;
 import com.amplifyframework.core.model.query.predicate.QueryPredicates;
+import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.appsync.AppSyncClient;
 import com.amplifyframework.datastore.model.ModelProviderLocator;
 import com.amplifyframework.datastore.storage.ItemChangeMapper;
@@ -611,6 +612,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
 
     public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
         return orchestrator.saveDirectlyToLocalStorage(model);
+    }
+
+    public Completable mergeApiResponse(SerializedModel model, Integer version, Temporal.Timestamp lastChangedAt) {
+        return orchestrator.mergeApiResponse(model, version, lastChangedAt);
     }
 
     public void restartMutationProcessor() {

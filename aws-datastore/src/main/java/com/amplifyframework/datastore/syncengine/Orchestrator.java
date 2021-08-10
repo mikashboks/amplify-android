@@ -24,7 +24,9 @@ import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.core.model.ModelSchemaRegistry;
+import com.amplifyframework.core.model.SerializedModel;
 import com.amplifyframework.core.model.query.predicate.QueryPredicates;
+import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.AWSDataStorePlugin;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
@@ -32,6 +34,8 @@ import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.DefaultDataStoreSyncSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
+import com.amplifyframework.datastore.appsync.ModelMetadata;
+import com.amplifyframework.datastore.appsync.ModelWithMetadata;
 import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
 import com.amplifyframework.datastore.storage.StorageItemChange;
@@ -73,6 +77,7 @@ public final class Orchestrator {
     private final long adjustedTimeoutSeconds;
     private final Semaphore startStopSemaphore;
     private final LocalStorageAdapter localStorageAdapter;
+    private final Merger merger;
 
     /**
      * Constructs a new Orchestrator.
@@ -165,6 +170,7 @@ public final class Orchestrator {
             TIMEOUT_SECONDS_PER_MODEL * modelProvider.models().size()
         );
         this.startStopSemaphore = new Semaphore(1);
+        this.merger = merger;
 
     }
 
@@ -387,6 +393,12 @@ public final class Orchestrator {
                 )
         ));
     }
+
+    public Completable mergeApiResponse(SerializedModel model, Integer version, Temporal.Timestamp lastChangedAt) {
+        ModelMetadata metadata = new ModelMetadata(model.getId(), false, version, lastChangedAt);
+        return merger.merge(new ModelWithMetadata<>(model, metadata));
+    }
+
 
     public void restartMutationProcessor() {
         LOG.debug("Restarting mutation processor...");
