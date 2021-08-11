@@ -394,7 +394,7 @@ public final class Orchestrator {
         ));
     }
 
-    public Completable mergeApiResponse(SerializedModel model, Integer version, Temporal.Timestamp lastChangedAt) {
+    public Completable mergeApiResponse(Model model, Integer version, Temporal.Timestamp lastChangedAt) {
         ModelMetadata metadata = new ModelMetadata(model.getId(), false, version, lastChangedAt);
         return merger.merge(new ModelWithMetadata<>(model, metadata));
     }
