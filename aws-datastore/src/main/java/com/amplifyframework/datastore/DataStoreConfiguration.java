@@ -57,6 +57,9 @@ public final class DataStoreConfiguration {
     private final Long syncIntervalInMinutes;
     private final Long maxTimeLapseForObserveQuery;
     private final Integer observeQueryMaxRecords;
+    private final DataStoreSyncSupplier dataStoreSyncSupplier;
+    private final DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
+    private final DataStoreTargetStateSupplier dataStoreTargetStateSupplier;
 
     private DataStoreConfiguration(Builder builder) {
         this.errorHandler = builder.errorHandler;
@@ -68,6 +71,9 @@ public final class DataStoreConfiguration {
         this.doSyncRetry = builder.doSyncRetry;
         this.maxTimeLapseForObserveQuery = builder.maxTimeLapseForObserveQuery;
         this.observeQueryMaxRecords = builder.observeQueryMaxRecords;
+        this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
+        this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
+        this.dataStoreTargetStateSupplier = builder.dataStoreTargetStateSupplier;
     }
 
     /**
@@ -118,6 +124,8 @@ public final class DataStoreConfiguration {
         return builder()
             .errorHandler(errorHandler)
             .conflictHandler(DataStoreConflictHandler.alwaysApplyRemote())
+            .dataStoreSyncSupplier(DefaultDataStoreSyncSupplier.instance())
+            .dataStoreSubscriptionsSupplier(DefaultDataStoreSubscriptionsSupplier.instance())
             .syncInterval(DEFAULT_SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .syncPageSize(DEFAULT_SYNC_PAGE_SIZE)
             .syncMaxRecords(DEFAULT_SYNC_MAX_RECORDS)
@@ -126,6 +134,17 @@ public final class DataStoreConfiguration {
                 .observeQueryMaxRecords(MAX_RECORDS)
             .build();
     }
+
+    public DataStoreSyncSupplier getDataStoreSyncSupplier() { return this.dataStoreSyncSupplier; }
+
+    public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
+        return this.dataStoreSubscriptionsSupplier;
+    }
+
+    public DataStoreTargetStateSupplier getDataStoreTargetStateSupplier() {
+        return this.dataStoreTargetStateSupplier;
+    }
+
 
     /**
      * Gets the data store error handler.
@@ -242,6 +261,15 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getObserveQueryMaxRecords(), that.getObserveQueryMaxRecords())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getDataStoreSyncSupplier(), that.getDataStoreSyncSupplier())) {
+            return false;
+        }
+        if (!ObjectsCompat.equals(getDataStoreSubscriptionsSupplier(), that.getDataStoreSubscriptionsSupplier())) {
+            return false;
+        }
+        if (!ObjectsCompat.equals(getDataStoreTargetStateSupplier(), that.getDataStoreTargetStateSupplier())) {
+            return false;
+        }
         return true;
     }
 
@@ -256,6 +284,9 @@ public final class DataStoreConfiguration {
         result = 31 * result + getDoSyncRetry().hashCode();
         result = 31 * result + (getObserveQueryMaxRecords() != null ? getObserveQueryMaxRecords().hashCode() : 0);
         result = 31 * result + getMaxTimeLapseForObserveQuery().hashCode();
+        result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
+        result = 31 * result + (getDataStoreSubscriptionsSupplier() != null ? getDataStoreSubscriptionsSupplier().hashCode() : 0);
+        result = 31 * result + (getDataStoreTargetStateSupplier() != null ? getDataStoreTargetStateSupplier().hashCode() : 0);
         return result;
     }
 
@@ -267,6 +298,9 @@ public final class DataStoreConfiguration {
             ", syncMaxRecords=" + syncMaxRecords +
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
+            ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
+            ", dataStoreSubscriptionsSupplier=" + dataStoreSubscriptionsSupplier +
+            ", dataStoreTargetStateSupplier=" + dataStoreTargetStateSupplier +
             ", syncExpressions=" + syncExpressions +
                 ", doSyncRetry=" + doSyncRetry +
                 ", maxTimeRelapseForObserveQuery=" + maxTimeLapseForObserveQuery +
@@ -308,6 +342,9 @@ public final class DataStoreConfiguration {
         private boolean ensureDefaults;
         private JSONObject pluginJson;
         private DataStoreConfiguration userProvidedConfiguration;
+        private DataStoreSyncSupplier dataStoreSyncSupplier;
+        private DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier;
+        private DataStoreTargetStateSupplier dataStoreTargetStateSupplier;
         private Integer observeQueryMaxRecords;
         private long maxTimeLapseForObserveQuery;
 
@@ -455,6 +492,24 @@ public final class DataStoreConfiguration {
             return Builder.this;
         }
 
+        @NonNull
+        public Builder dataStoreSyncSupplier(@NonNull DataStoreSyncSupplier dataStoreSyncSupplier) {
+            this.dataStoreSyncSupplier = Objects.requireNonNull(dataStoreSyncSupplier);
+            return Builder.this;
+        }
+
+        @NonNull
+        public Builder dataStoreSubscriptionsSupplier(@NonNull DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier) {
+            this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
+            return Builder.this;
+        }
+
+        @NonNull
+        public Builder dataStoreTargetStateSupplier(@NonNull DataStoreTargetStateSupplier dataStoreTargetStateSupplier) {
+            this.dataStoreTargetStateSupplier = Objects.requireNonNull(dataStoreTargetStateSupplier);
+            return Builder.this;
+        }
+
         private void populateSettingsFromJson() throws DataStoreException {
             if (pluginJson == null) {
                 return;
@@ -499,6 +554,9 @@ public final class DataStoreConfiguration {
             if (userProvidedConfiguration == null) {
                 return;
             }
+            dataStoreTargetStateSupplier = userProvidedConfiguration.getDataStoreTargetStateSupplier();
+            dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
+            dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
             conflictHandler = userProvidedConfiguration.getConflictHandler();
             syncIntervalInMinutes = getValueOrDefault(
@@ -541,6 +599,15 @@ public final class DataStoreConfiguration {
                 observeQueryMaxRecords = getValueOrDefault(observeQueryMaxRecords, MAX_RECORDS);
                 maxTimeLapseForObserveQuery = maxTimeLapseForObserveQuery == 0 ? MAX_TIME_SEC :
                         maxTimeLapseForObserveQuery;
+                dataStoreSyncSupplier = getValueOrDefault(
+                        dataStoreSyncSupplier,
+                        DefaultDataStoreSyncSupplier.instance());
+                dataStoreSubscriptionsSupplier = getValueOrDefault(
+                        dataStoreSubscriptionsSupplier,
+                        DefaultDataStoreSubscriptionsSupplier.instance());
+                dataStoreTargetStateSupplier = getValueOrDefault(
+                        dataStoreTargetStateSupplier,
+                        DefaultDataStoreTargetStateSupplier.instance());
             }
             return new DataStoreConfiguration(this);
         }

@@ -27,6 +27,7 @@ import com.amplifyframework.util.Time;
  * class. TODO: move this to become a static inner class of {@link LastSyncMetadata}?
  */
 final class SyncTime {
+    private static final long SYNC_TIME_ADJUST_PAST_MILLISECONDS = 10000L;
     private final Long time;
 
     private SyncTime(Long time) {
@@ -48,7 +49,7 @@ final class SyncTime {
     }
 
     public static SyncTime now() {
-        return new SyncTime(Time.now());
+        return new SyncTime(Time.now() - SYNC_TIME_ADJUST_PAST_MILLISECONDS);
     }
 
     boolean exists() {
