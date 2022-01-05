@@ -663,6 +663,10 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
                 );
     }
 
+    public synchronized void refreshSyncExpression() throws DataStoreException {
+        orchestrator.refreshSyncExpression();
+    }
+
     /**
      * Creates a builder that provides available options to be set when creating
      * a DataStore plugin.

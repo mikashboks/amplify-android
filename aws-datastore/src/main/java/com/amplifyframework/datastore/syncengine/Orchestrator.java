@@ -466,6 +466,11 @@ public final class Orchestrator {
         return Completable.fromAction(this::triggerHydrate);
     }
 
+    public void refreshSyncExpression() throws DataStoreException {
+        queryPredicateProvider.resolvePredicates();
+    }
+
+
     /**
      * The current state of the Orchestrator.
      */
