@@ -28,6 +28,7 @@ import com.amplifyframework.util.Time;
  */
 final class SyncTime {
     private final Long time;
+    private static final long SYNC_TIME_ADJUST_PAST_MILLISECONDS = 5000L;
 
     private SyncTime(Long time) {
         this.time = time;
@@ -48,7 +49,7 @@ final class SyncTime {
     }
 
     public static SyncTime now() {
-        return new SyncTime(Time.now());
+        return new SyncTime(Time.now() - SYNC_TIME_ADJUST_PAST_MILLISECONDS);
     }
 
     boolean exists() {
