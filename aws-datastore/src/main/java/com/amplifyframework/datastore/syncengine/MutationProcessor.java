@@ -105,7 +105,7 @@ final class MutationProcessor {
                 () -> LOG.warn("Observation of mutation outbox was completed."),
                     error -> {
                         LOG.warn("Error ended observation of mutation outbox: ", error);
-                        if (onPipelineBroken != null) {
+                        if (onPipelineBroken != null) { 
                             onPipelineBroken.call();
                         }
                     }

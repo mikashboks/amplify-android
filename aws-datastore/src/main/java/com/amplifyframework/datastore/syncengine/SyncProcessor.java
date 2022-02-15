@@ -45,6 +45,7 @@ import com.amplifyframework.logging.Logger;
 import com.amplifyframework.util.ForEach;
 import com.amplifyframework.util.Time;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -181,18 +182,22 @@ final class SyncProcessor {
             // And for each, perform a sync. The network response will contain an Iterable<ModelWithMetadata<T>>
             .flatMap(lastSyncTime -> {
                 // Sync all the pages
+                SyncTime newSyncTime = SyncTime.now();
                 return syncModel(schema, lastSyncTime)
                     // Switch to a new thread so that subsequent API fetches will happen in parallel with DB writes.
                     .observeOn(Schedulers.io())
                     // Flatten to a stream of ModelWithMetadata objects
                     .concatMap(Flowable::fromIterable)
                     .concatMapCompletable(item -> merger.merge(item, metricsAccumulator::increment))
-                    .toSingle(() -> lastSyncTime.exists() ? SyncType.DELTA : SyncType.BASE);
+                    .toSingle(() -> lastSyncTime.exists() ? new AbstractMap.SimpleEntry<>(SyncType.DELTA, newSyncTime)
+                            : new AbstractMap.SimpleEntry<>(SyncType.DELTA, newSyncTime));
             })
-            .flatMapCompletable(syncType -> {
+            .flatMapCompletable(res -> {
+                SyncType syncType = res.getKey();
+                SyncTime syncTime = res.getValue();
                 Completable syncTimeSaveCompletable = SyncType.DELTA.equals(syncType) ?
-                    syncTimeRegistry.saveLastDeltaSyncTime(schema.getName(), SyncTime.now()) :
-                    syncTimeRegistry.saveLastBaseSyncTime(schema.getName(), SyncTime.now());
+                    syncTimeRegistry.saveLastDeltaSyncTime(schema.getName(), syncTime) :
+                    syncTimeRegistry.saveLastBaseSyncTime(schema.getName(), syncTime);
                 return syncTimeSaveCompletable.andThen(Completable.fromAction(() ->
                     Amplify.Hub.publish(
                         HubChannel.DATASTORE, metricsAccumulator.toModelSyncedEvent(syncType).toHubEvent()
