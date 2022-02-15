@@ -345,12 +345,9 @@ public final class Orchestrator {
                 long startTime = System.currentTimeMillis();
                 LOG.debug("About to hydrate...");
                 try {
-                    boolean subscribed = syncProcessor.hydrate()
-                            .blockingAwait(adjustedTimeoutSeconds, TimeUnit.SECONDS);
+                    syncProcessor.hydrate()
+                            .blockingAwait();
                     LOG.debug("Hydration complete in " + (System.currentTimeMillis() - startTime) + "ms");
-                    if (!subscribed) {
-                        throw new TimeoutException("Timed out while performing initial model sync.");
-                    }
                 } catch (Throwable failure) {
                     if (!emitter.isDisposed()) {
                         emitter.onError(new DataStoreException(
