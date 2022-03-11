@@ -266,7 +266,7 @@ final class SyncProcessor {
     private <T extends Model> Flowable<List<ModelWithMetadata<T>>> syncModel(ModelSchema schema, SyncTime syncTime)
             throws DataStoreException {
         final Long lastSyncTimeAsLong = syncTime.exists() ? syncTime.toLong() : null;
-        final Integer syncPageSize = dataStoreConfigurationProvider.getConfiguration().getSyncPageSize();
+        final Integer syncPageSize = dataStoreConfigurationProvider.getConfiguration().getModelSyncPageSize(schema.getName());
         final Integer syncMaxRecords = dataStoreConfigurationProvider.getConfiguration().getSyncMaxRecords();
         AtomicReference<Integer> recordsFetched = new AtomicReference<>(0);
         QueryPredicate predicate = queryPredicateProvider.getPredicate(schema.getName());

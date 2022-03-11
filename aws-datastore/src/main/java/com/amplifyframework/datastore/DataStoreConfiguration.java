@@ -52,6 +52,7 @@ public final class DataStoreConfiguration {
     private final DataStoreConflictHandler conflictHandler;
     private final Integer syncMaxRecords;
     private final Integer syncPageSize;
+    private final Map<String, Integer> modelSpecificSyncPageSize;
     private final boolean doSyncRetry;
     private final Map<String, DataStoreSyncExpression> syncExpressions;
     private final Long syncIntervalInMinutes;
@@ -74,6 +75,7 @@ public final class DataStoreConfiguration {
         this.dataStoreSyncSupplier = builder.dataStoreSyncSupplier;
         this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
         this.dataStoreTargetStateSupplier = builder.dataStoreTargetStateSupplier;
+        this.modelSpecificSyncPageSize = builder.modelSpecificSyncPageSize;
     }
 
     /**
@@ -135,7 +137,10 @@ public final class DataStoreConfiguration {
             .build();
     }
 
+
     public DataStoreSyncSupplier getDataStoreSyncSupplier() { return this.dataStoreSyncSupplier; }
+
+    public Map<String, Integer> getModelSpecificSyncPageSize() { return this.modelSpecificSyncPageSize; }
 
     public DataStoreSubscriptionsSupplier getDataStoreSubscriptionsSupplier() {
         return this.dataStoreSubscriptionsSupplier;
@@ -205,6 +210,15 @@ public final class DataStoreConfiguration {
         return this.syncPageSize;
     }
 
+    @IntRange(from = 0)
+    public Integer getModelSyncPageSize(String modelName) {
+        if (this.modelSpecificSyncPageSize.containsKey(modelName)) {
+            return this.modelSpecificSyncPageSize.get(modelName);
+        } else {
+            return this.syncPageSize;
+        }
+    }
+
     /**
      * Gets the boolean for enabling retry on sync failure
      * a sync operation.
@@ -263,6 +277,9 @@ public final class DataStoreConfiguration {
         if (!ObjectsCompat.equals(getDataStoreSyncSupplier(), that.getDataStoreSyncSupplier())) {
             return false;
         }
+        if (!ObjectsCompat.equals(getModelSpecificSyncPageSize(), that.getModelSpecificSyncPageSize())) {
+            return false;
+        }
         if (!ObjectsCompat.equals(getDataStoreSubscriptionsSupplier(), that.getDataStoreSubscriptionsSupplier())) {
             return false;
         }
@@ -284,6 +301,7 @@ public final class DataStoreConfiguration {
         result = 31 * result + (getObserveQueryMaxRecords() != null ? getObserveQueryMaxRecords().hashCode() : 0);
         result = 31 * result + getMaxTimeLapseForObserveQuery().hashCode();
         result = 31 * result + (getDataStoreSyncSupplier() != null ? getDataStoreSyncSupplier().hashCode() : 0);
+        result = 31 * result + (getModelSpecificSyncPageSize() != null ? getModelSpecificSyncPageSize().hashCode() : 0);
         result = 31 * result + (getDataStoreSubscriptionsSupplier() != null ? getDataStoreSubscriptionsSupplier().hashCode() : 0);
         result = 31 * result + (getDataStoreTargetStateSupplier() != null ? getDataStoreTargetStateSupplier().hashCode() : 0);
         return result;
@@ -298,6 +316,7 @@ public final class DataStoreConfiguration {
             ", syncPageSize=" + syncPageSize +
             ", syncIntervalInMinutes=" + syncIntervalInMinutes +
             ", dataStoreSyncSupplier=" + dataStoreSyncSupplier +
+            ", modelSpecificSyncPageSize=" + modelSpecificSyncPageSize +
             ", dataStoreSubscriptionsSupplier=" + dataStoreSubscriptionsSupplier +
             ", dataStoreTargetStateSupplier=" + dataStoreTargetStateSupplier +
             ", syncExpressions=" + syncExpressions +
@@ -338,6 +357,7 @@ public final class DataStoreConfiguration {
         private Integer syncPageSize;
         private boolean doSyncRetry;
         private Map<String, DataStoreSyncExpression> syncExpressions;
+        private Map<String, Integer> modelSpecificSyncPageSize;
         private boolean ensureDefaults;
         private JSONObject pluginJson;
         private DataStoreConfiguration userProvidedConfiguration;
@@ -498,6 +518,12 @@ public final class DataStoreConfiguration {
         }
 
         @NonNull
+        public Builder modelSpecificSyncPageSize(@NonNull Map<String, Integer> modelSpecificSyncPageSize) {
+            this.modelSpecificSyncPageSize = Objects.requireNonNull(modelSpecificSyncPageSize);
+            return Builder.this;
+        }
+
+        @NonNull
         public Builder dataStoreSubscriptionsSupplier(@NonNull DataStoreSubscriptionsSupplier dataStoreSubscriptionsSupplier) {
             this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
             return Builder.this;
@@ -556,6 +582,7 @@ public final class DataStoreConfiguration {
             }
             dataStoreTargetStateSupplier = userProvidedConfiguration.getDataStoreTargetStateSupplier();
             dataStoreSyncSupplier = userProvidedConfiguration.getDataStoreSyncSupplier();
+            modelSpecificSyncPageSize = userProvidedConfiguration.getModelSpecificSyncPageSize();
             dataStoreSubscriptionsSupplier = userProvidedConfiguration.getDataStoreSubscriptionsSupplier();
             errorHandler = userProvidedConfiguration.getErrorHandler();
             conflictHandler = userProvidedConfiguration.getConflictHandler();
@@ -602,6 +629,9 @@ public final class DataStoreConfiguration {
                 dataStoreSyncSupplier = getValueOrDefault(
                         dataStoreSyncSupplier,
                         DefaultDataStoreSyncSupplier.instance());
+                modelSpecificSyncPageSize = getValueOrDefault(
+                        modelSpecificSyncPageSize,
+                        new HashMap<>());
                 dataStoreSubscriptionsSupplier = getValueOrDefault(
                         dataStoreSubscriptionsSupplier,
                         DefaultDataStoreSubscriptionsSupplier.instance());
