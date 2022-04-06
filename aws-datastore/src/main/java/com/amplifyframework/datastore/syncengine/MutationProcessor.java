@@ -51,7 +51,7 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
  */
 final class MutationProcessor {
     private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
-    private static final long ITEM_PROCESSING_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
+    private static final long ITEM_PROCESSING_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(20);
 
     private final Merger merger;
     private final VersionRepository versionRepository;
@@ -327,7 +327,11 @@ final class MutationProcessor {
             @NonNull PublicationStrategy<T> publicationStrategy) {
         return Single
             .<GraphQLResponse<ModelWithMetadata<T>>>create(subscriber ->
-                publicationStrategy.publish(mutation.getMutatedItem(), subscriber::onSuccess, subscriber::onError)
+                publicationStrategy.publish(mutation.getMutatedItem(), subscriber::onSuccess, (exception) -> {
+                    if (!subscriber.isDisposed()) {
+                        subscriber.onError(exception);
+                    }
+                })
             )
             .flatMap(response -> {
                 // If there are no errors, and the response has data, just return.
