@@ -27,6 +27,7 @@ import com.amplifyframework.core.model.SchemaRegistry;
 import com.amplifyframework.core.model.query.QueryOptions;
 import com.amplifyframework.core.model.query.predicate.QueryField;
 import com.amplifyframework.core.model.query.predicate.QueryPredicate;
+import com.amplifyframework.core.model.query.predicate.QueryPredicateGroup;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.storage.sqlite.adapter.SQLiteTable;
 import com.amplifyframework.logging.Logger;
@@ -94,7 +95,7 @@ class SqlQueryProcessor {
         final String tableName = table.getName();
         final String primaryKeyName = table.getPrimaryKey().getName();
         final QueryPredicate matchId = QueryField.field(tableName, primaryKeyName).eq(model.getId());
-        final QueryPredicate condition = predicate.and(matchId);
+        final QueryPredicate condition = QueryPredicateGroup.andOf(predicate).and(matchId);
         return sqlCommandProcessor.executeExists(sqlCommandFactory.existsFor(schema, condition));
     }
 }
