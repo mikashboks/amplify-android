@@ -20,12 +20,14 @@ import androidx.annotation.VisibleForTesting;
 import androidx.core.util.Supplier;
 
 import com.amplifyframework.AmplifyException;
+import com.amplifyframework.api.ApiException;
 import com.amplifyframework.api.graphql.GraphQLResponse;
 import com.amplifyframework.api.graphql.SubscriptionType;
 import com.amplifyframework.core.Action;
 import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.Consumer;
 import com.amplifyframework.core.async.Cancelable;
+import com.amplifyframework.core.category.CategoryType;
 import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.core.model.ModelSchema;
@@ -42,6 +44,7 @@ import com.amplifyframework.datastore.appsync.AppSyncExtensions;
 import com.amplifyframework.datastore.appsync.AppSyncExtensions.AppSyncErrorType;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
 import com.amplifyframework.datastore.model.SubscriptionModel;
+import com.amplifyframework.datastore.utils.ErrorInspector;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
@@ -60,7 +63,7 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
-import io.reactivex.rxjava3.subjects.ReplaySubject;
+import io.reactivex.rxjava3.subjects.UnicastSubject;
 
 /**
  * Observes mutations occurring on a remote {@link AppSync} system. The mutations arrive
@@ -69,7 +72,7 @@ import io.reactivex.rxjava3.subjects.ReplaySubject;
  * marries mutated models back into the local DataStore, through the {@link Merger}.
  */
 final class SubscriptionProcessor {
-    private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
+    private static final Logger LOG = Amplify.Logging.logger(CategoryType.DATASTORE, "amplify:aws-datastore");
     private static final long TIMEOUT_SECONDS_PER_MODEL = 20;
     private static final long TIMEOUT_SECONDS_PER_SUBSCRIPTION = 10;
     private static final long NETWORK_OP_TIMEOUT_SECONDS = 60;
@@ -84,6 +87,7 @@ final class SubscriptionProcessor {
     private final long adjustedTimeoutSeconds;
     private ReplaySubject<SubscriptionEvent<? extends Model>> buffer;
     private Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier;
+    private UnicastSubject<SubscriptionEvent<? extends Model>> buffer;
 
     /**
      * Constructs a new SubscriptionProcessor.
@@ -131,8 +135,8 @@ final class SubscriptionProcessor {
         AbortableCountDownLatch<DataStoreException> latch = new AbortableCountDownLatch<>(subscriptionCount);
 
         // Need to create a new buffer so we can properly handle retries and stop/start scenarios.
-        // Re-using the same buffer has some unexpected results due to the replay aspect of the subject.
-        buffer = ReplaySubject.create();
+        // Re-using the same buffer has some unexpected results due to the queueing aspect of the subject.
+        buffer = UnicastSubject.create();
 
         Set<Observable<SubscriptionEvent<? extends Model>>> subscriptions = new HashSet<>();
         for (SubscriptionModel subscriptionModel : subscriptionModelTypes) {
@@ -201,7 +205,8 @@ final class SubscriptionProcessor {
                 },
                 emitter::onNext,
                 dataStoreException -> {
-                    if (isExceptionType(dataStoreException, AppSyncErrorType.UNAUTHORIZED)) {
+                    if (ErrorInspector.contains(dataStoreException, ApiException.ApiAuthException.class) ||
+                            isExceptionType(dataStoreException, AppSyncErrorType.UNAUTHORIZED)) {
                         // Ignore Unauthorized errors, so that DataStore can still be used even if the user is only
                         // authorized to read a subset of the models.
                         latch.countDown();

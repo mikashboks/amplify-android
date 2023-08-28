@@ -23,6 +23,7 @@ import androidx.annotation.NonNull;
 
 import com.amplifyframework.AmplifyException;
 import com.amplifyframework.core.Amplify;
+import com.amplifyframework.core.category.CategoryType;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.logging.Logger;
 
@@ -38,7 +39,7 @@ import java.util.Objects;
  * transaction to improve performance.
  */
 final class SQLCommandProcessor {
-    private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
+    private static final Logger LOG = Amplify.Logging.logger(CategoryType.DATASTORE, "amplify:aws-datastore");
 
     private final SQLiteDatabase sqliteDatabase;
 

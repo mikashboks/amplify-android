@@ -31,6 +31,7 @@ import com.amplifyframework.core.Amplify;
 import com.amplifyframework.core.Consumer;
 import com.amplifyframework.core.InitializationStatus;
 import com.amplifyframework.core.async.Cancelable;
+import com.amplifyframework.core.category.CategoryType;
 import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.model.ModelIdentifier;
 import com.amplifyframework.core.model.ModelProvider;
@@ -43,6 +44,7 @@ import com.amplifyframework.core.model.query.predicate.QueryPredicate;
 import com.amplifyframework.core.model.query.predicate.QueryPredicates;
 import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.appsync.AppSyncClient;
+import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.model.ModelProviderLocator;
 import com.amplifyframework.datastore.storage.ItemChangeMapper;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
@@ -52,6 +54,7 @@ import com.amplifyframework.datastore.storage.sqlite.SqlCommand;
 import com.amplifyframework.datastore.syncengine.Orchestrator;
 import com.amplifyframework.datastore.syncengine.ReachabilityMonitor;
 import com.amplifyframework.hub.HubChannel;
+import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
 
 import org.json.JSONObject;
@@ -73,7 +76,7 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
  * An AWS implementation of the {@link DataStorePlugin}.
  */
 public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
-    private static final Logger LOG = Amplify.Logging.forNamespace("amplify:aws-datastore");
+    private static final Logger LOG = Amplify.Logging.logger(CategoryType.DATASTORE, "amplify:aws-datastore");
     private static final long LIFECYCLE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(5);
 
     // Reference to an implementation of the Local Storage Adapter that
@@ -121,7 +124,8 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             () -> api.getPlugins().isEmpty() || pluginConfiguration == null
                         ? Orchestrator.State.LOCAL_ONLY
                         : pluginConfiguration.getDataStoreTargetStateSupplier().get(),
-                isSyncRetryEnabled
+            reachabilityMonitor,
+            isSyncRetryEnabled
         );
 
     }
@@ -157,6 +161,7 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             () -> api.getPlugins().isEmpty() || pluginConfiguration == null
                         ? Orchestrator.State.LOCAL_ONLY
                         : pluginConfiguration.getDataStoreTargetStateSupplier().get(),
+            reachabilityMonitor,
             isSyncRetryEnabled
         );
     }
@@ -275,31 +280,18 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
         );
 
         reachabilityMonitor.configure(context);
-        observeNetworkStatus();
+
+        waitForInitialization().subscribe(this::observeNetworkStatus);
     }
 
-    /**
-     * Start the datastore when the network is available, and stop the datastore when it is not
-     * available.
-     */
+    private void publishNetworkStatusEvent(boolean active) {
+        Amplify.Hub.publish(HubChannel.DATASTORE,
+                HubEvent.create(DataStoreChannelEventName.NETWORK_STATUS, new NetworkStatusEvent(active)));
+    }
+
     private void observeNetworkStatus() {
         reachabilityMonitor.getObservable()
-            .doOnNext(networkIsAvailable -> {
-                if (networkIsAvailable) {
-                    LOG.info("Network available, start datastore");
-                    start(
-                        (Action) () -> { },
-                        ((e) -> LOG.error("Error starting datastore plugin after network event: " + e))
-                    );
-                } else {
-                    LOG.info("Network lost, stop datastore");
-                    stop(
-                        (Action) () -> { },
-                        ((e) -> LOG.error("Error stopping datastore plugin after network event: " + e))
-                    );
-                }
-            })
-            .subscribe();
+                .subscribe(this::publishNetworkStatusEvent);
     }
 
     @WorkerThread
