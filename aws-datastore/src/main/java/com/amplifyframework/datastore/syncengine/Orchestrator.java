@@ -17,31 +17,46 @@ package com.amplifyframework.datastore.syncengine;
 
 import android.content.Context;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.util.Supplier;
 
 import com.amplifyframework.AmplifyException;
 import com.amplifyframework.core.Amplify;
+import com.amplifyframework.core.model.Model;
 import com.amplifyframework.core.category.CategoryType;
 import com.amplifyframework.core.model.ModelProvider;
 import com.amplifyframework.core.model.SchemaRegistry;
+import com.amplifyframework.core.model.query.predicate.QueryPredicates;
+import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.AWSDataStorePlugin;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreConfigurationProvider;
 import com.amplifyframework.datastore.DataStoreException;
+import com.amplifyframework.datastore.DefaultDataStoreSubscriptionsSupplier;
+import com.amplifyframework.datastore.DefaultDataStoreSyncSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
+import com.amplifyframework.datastore.appsync.ModelMetadata;
+import com.amplifyframework.datastore.appsync.ModelWithMetadata;
+import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
+import com.amplifyframework.datastore.storage.StorageItemChange;
+import com.amplifyframework.datastore.storage.sqlite.SqlCommand;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
 import com.amplifyframework.logging.Logger;
 
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.functions.Action;
@@ -64,6 +79,8 @@ public final class Orchestrator {
     private final MutationOutbox mutationOutbox;
     private final CompositeDisposable disposables;
     private final Semaphore startStopSemaphore;
+    private final LocalStorageAdapter localStorageAdapter;
+    private final Merger merger;
     private final ReachabilityMonitor reachabilityMonitor;
     private Disposable monitorNetworkChangesDisposable;
 
@@ -109,6 +126,7 @@ public final class Orchestrator {
         Objects.requireNonNull(appSync);
         Objects.requireNonNull(localStorageAdapter);
 
+        this.localStorageAdapter = localStorageAdapter;
         this.mutationOutbox = new PersistentMutationOutbox(localStorageAdapter);
         VersionRepository versionRepository = new VersionRepository(localStorageAdapter);
         Merger merger = new Merger(mutationOutbox, versionRepository, localStorageAdapter);
@@ -133,7 +151,15 @@ public final class Orchestrator {
             .dataStoreConfigurationProvider(dataStoreConfigurationProvider)
             .queryPredicateProvider(queryPredicateProvider)
             .retryHandler(new RetryHandler())
-                .isSyncRetryEnabled(isSyncRetryEnabled)
+            .isSyncRetryEnabled(isSyncRetryEnabled)
+            .dataStoreSyncSupplier(() -> {
+                try {
+                    return dataStoreConfigurationProvider.getConfiguration().getDataStoreSyncSupplier();
+                } catch (Exception error) {
+                    LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                    return DefaultDataStoreSyncSupplier.instance();
+                }
+            })
             .build();
         this.subscriptionProcessor = SubscriptionProcessor.builder()
                 .appSync(appSync)
@@ -141,6 +167,16 @@ public final class Orchestrator {
                 .schemaRegistry(schemaRegistry)
                 .merger(merger)
                 .queryPredicateProvider(queryPredicateProvider)
+                .dataStoreSubscriptionsSupplier(
+                        () -> {
+                            try {
+                                return dataStoreConfigurationProvider.getConfiguration().getDataStoreSubscriptionsSupplier();
+                            } catch (Exception error) {
+                                LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", error);
+                                return DefaultDataStoreSubscriptionsSupplier.instance();
+                            }
+                        }
+                )
                 .onFailure(this::onApiSyncFailure)
                 .build();
         this.storageObserver = new StorageObserver(localStorageAdapter, mutationOutbox);
@@ -150,6 +186,7 @@ public final class Orchestrator {
         this.disposables = new CompositeDisposable();
 
         this.startStopSemaphore = new Semaphore(1);
+        this.merger = merger;
 
     }
 
@@ -439,6 +476,81 @@ public final class Orchestrator {
         disposables.clear();
         subscriptionProcessor.stopAllSubscriptionActivity();
         mutationProcessor.stopDrainingMutationOutbox();
+    }
+
+    public <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return Completable.defer(() -> Completable.create(emitter ->
+                localStorageAdapter.save(
+                        model,
+                        StorageItemChange.Initiator.SYNC_ENGINE,
+                        QueryPredicates.all(),
+                        storageItemChange -> {
+                            emitter.onComplete();
+                        },
+                        emitter::onError
+                )
+        ));
+    }
+
+    public Single<List<Map<String, Object>>> queryDirectlyToLocalStorage(SqlCommand command) {
+        return Single.defer(() -> Single.create(emitter ->
+                localStorageAdapter.rawQuery(
+                        command,
+                        storageItemChange -> {
+                            emitter.onSuccess(storageItemChange);
+                        },
+                        emitter::onError
+                )
+        ));
+    }
+
+    public Completable mergeApiResponse(Model model, Integer version, Temporal.Timestamp lastChangedAt) {
+        ModelMetadata metadata = new ModelMetadata(model.getPrimaryKeyString(), false, version, lastChangedAt);
+        return merger.merge(new ModelWithMetadata<>(model, metadata));
+    }
+
+
+    public void restartMutationProcessor() {
+        LOG.debug("Restarting mutation processor...");
+        mutationProcessor.stopDrainingMutationOutbox();
+        mutationOutbox.load();
+        mutationProcessor.startDrainingMutationOutbox();
+    }
+
+    public synchronized void triggerHydrate() {
+        triggerHydrate(false, null);
+    }
+
+    /**
+     * Manually hydrate.
+     *
+     * */
+    public synchronized void triggerHydrate(@Nullable Boolean forceBaseSync, @Nullable ArrayList<String> limitModelsToBeSynced) {
+        disposables.add(
+            Completable.defer(() -> {
+                if (currentState.get() != State.SYNC_VIA_API) {
+                    LOG.warn("Orchestrator not in SYNC_VIA_API so not hydrating");
+                    return Completable.complete();
+                } else {
+                    return syncProcessor.hydrate(forceBaseSync, limitModelsToBeSynced);
+                }
+            })
+            .doOnSubscribe(subscriber -> LOG.info("Attempting to manually triggering hydrate..."))
+            .doOnError(failure -> LOG.warn("Unable to manually trigger hydration", failure))
+            .subscribe()
+        );
+    }
+
+    public Completable hydrate(@Nullable Boolean forceBaseSync, @Nullable ArrayList<String> limitModelsToBeSynced) {
+        return Completable.fromAction(() -> triggerHydrate(forceBaseSync, limitModelsToBeSynced));
+    }
+
+    public Completable hydrate() {
+        return Completable.fromAction(this::triggerHydrate);
+    }
+
+    public void refreshSyncExpression() throws DataStoreException {
+        queryPredicateProvider.resolvePredicates();
     }
 
     /**

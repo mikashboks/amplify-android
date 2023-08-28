@@ -15,6 +15,7 @@
 
 package com.amplifyframework.datastore;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -41,6 +42,7 @@ import com.amplifyframework.core.model.query.QueryOptions;
 import com.amplifyframework.core.model.query.Where;
 import com.amplifyframework.core.model.query.predicate.QueryPredicate;
 import com.amplifyframework.core.model.query.predicate.QueryPredicates;
+import com.amplifyframework.core.model.temporal.Temporal;
 import com.amplifyframework.datastore.appsync.AppSyncClient;
 import com.amplifyframework.datastore.events.NetworkStatusEvent;
 import com.amplifyframework.datastore.model.ModelProviderLocator;
@@ -48,6 +50,7 @@ import com.amplifyframework.datastore.storage.ItemChangeMapper;
 import com.amplifyframework.datastore.storage.LocalStorageAdapter;
 import com.amplifyframework.datastore.storage.StorageItemChange;
 import com.amplifyframework.datastore.storage.sqlite.SQLiteStorageAdapter;
+import com.amplifyframework.datastore.storage.sqlite.SqlCommand;
 import com.amplifyframework.datastore.syncengine.Orchestrator;
 import com.amplifyframework.datastore.syncengine.ReachabilityMonitor;
 import com.amplifyframework.hub.HubChannel;
@@ -57,12 +60,16 @@ import com.amplifyframework.logging.Logger;
 import org.json.JSONObject;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
@@ -114,7 +121,9 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             sqliteStorageAdapter,
             AppSyncClient.via(api),
             () -> pluginConfiguration,
-            () -> api.getPlugins().isEmpty() ? Orchestrator.State.LOCAL_ONLY : Orchestrator.State.SYNC_VIA_API,
+            () -> api.getPlugins().isEmpty() || pluginConfiguration == null
+                        ? Orchestrator.State.LOCAL_ONLY
+                        : pluginConfiguration.getDataStoreTargetStateSupplier().get(),
             reachabilityMonitor,
             isSyncRetryEnabled
         );
@@ -149,7 +158,9 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             sqliteStorageAdapter,
             AppSyncClient.via(api, this.authModeStrategy),
             () -> pluginConfiguration,
-            () -> api.getPlugins().isEmpty() ? Orchestrator.State.LOCAL_ONLY : Orchestrator.State.SYNC_VIA_API,
+            () -> api.getPlugins().isEmpty() || pluginConfiguration == null
+                        ? Orchestrator.State.LOCAL_ONLY
+                        : pluginConfiguration.getDataStoreTargetStateSupplier().get(),
             reachabilityMonitor,
             isSyncRetryEnabled
         );
@@ -663,6 +674,46 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             onObservationFailure,
             onObservationCompleted
         )), onObservationFailure);
+    }
+
+
+    public  <T extends Model> Completable saveDirectlyToLocalStorage(T model) {
+        return orchestrator.saveDirectlyToLocalStorage(model);
+    }
+
+    public Single<List<Map<String, Object>>> queryDirectlyToLocalStorage(SqlCommand command) {
+        return orchestrator.queryDirectlyToLocalStorage(command);
+    }
+
+    public Completable mergeApiResponse(Model model, Integer version, Temporal.Timestamp lastChangedAt) {
+        return orchestrator.mergeApiResponse(model, version, lastChangedAt);
+    }
+
+    public void restartMutationProcessor() {
+        orchestrator.restartMutationProcessor();
+    }
+
+    public CountDownLatch categoryInitializationsPending() {
+        return categoryInitializationsPending;
+    }
+
+    public synchronized void hydrate(@NonNull Action onComplete, @NonNull Consumer<DataStoreException> onError) {
+        hydrate(onComplete, onError, null, null);
+    }
+
+    public synchronized void hydrate(@NonNull Action onComplete, @NonNull Consumer<DataStoreException> onError, @Nullable Boolean forceBaseSync, @Nullable ArrayList<String> limitModelsToBeSynced) {
+        waitForInitialization()
+                .andThen(orchestrator.hydrate(forceBaseSync, limitModelsToBeSynced))
+                .subscribeOn(Schedulers.io())
+                .subscribe(
+                        onComplete::call,
+                        error -> onError.accept(new DataStoreException(
+                                "Failed to manually hydrate DataStore.", error, "Retry."))
+                );
+    }
+
+    public synchronized void refreshSyncExpression() throws DataStoreException {
+        orchestrator.refreshSyncExpression();
     }
 
     /**

@@ -173,6 +173,7 @@ public final class SyncProcessorTest {
             .queryPredicateProvider(queryPredicateProvider)
             .retryHandler(requestRetry)
             .isSyncRetryEnabled(isSyncRetryEnabled)
+            .dataStoreSyncSupplier(() -> DefaultDataStoreSyncSupplier.instance())
             .build();
     }
 

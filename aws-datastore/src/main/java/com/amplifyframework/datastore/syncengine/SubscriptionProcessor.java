@@ -17,6 +17,7 @@ package com.amplifyframework.datastore.syncengine;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.util.Supplier;
 
 import com.amplifyframework.AmplifyException;
 import com.amplifyframework.api.ApiException;
@@ -37,10 +38,12 @@ import com.amplifyframework.datastore.AmplifyDisposables;
 import com.amplifyframework.datastore.DataStoreChannelEventName;
 import com.amplifyframework.datastore.DataStoreException;
 import com.amplifyframework.datastore.DataStoreException.GraphQLResponseException;
+import com.amplifyframework.datastore.DataStoreSubscriptionsSupplier;
 import com.amplifyframework.datastore.appsync.AppSync;
 import com.amplifyframework.datastore.appsync.AppSyncExtensions;
 import com.amplifyframework.datastore.appsync.AppSyncExtensions.AppSyncErrorType;
 import com.amplifyframework.datastore.appsync.ModelWithMetadata;
+import com.amplifyframework.datastore.model.SubscriptionModel;
 import com.amplifyframework.datastore.utils.ErrorInspector;
 import com.amplifyframework.hub.HubChannel;
 import com.amplifyframework.hub.HubEvent;
@@ -71,6 +74,7 @@ import io.reactivex.rxjava3.subjects.UnicastSubject;
 final class SubscriptionProcessor {
     private static final Logger LOG = Amplify.Logging.logger(CategoryType.DATASTORE, "amplify:aws-datastore");
     private static final long TIMEOUT_SECONDS_PER_MODEL = 20;
+    private static final long TIMEOUT_SECONDS_PER_SUBSCRIPTION = 10;
     private static final long NETWORK_OP_TIMEOUT_SECONDS = 60;
 
     private final AppSync appSync;
@@ -81,6 +85,8 @@ final class SubscriptionProcessor {
     private final Consumer<Throwable> onFailure;
     private final CompositeDisposable ongoingOperationsDisposable;
     private final long adjustedTimeoutSeconds;
+    private ReplaySubject<SubscriptionEvent<? extends Model>> buffer;
+    private Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier;
     private UnicastSubject<SubscriptionEvent<? extends Model>> buffer;
 
     /**
@@ -94,17 +100,18 @@ final class SubscriptionProcessor {
         this.queryPredicateProvider = builder.queryPredicateProvider;
         this.onFailure = builder.onFailure;
         this.schemaRegistry = builder.schemaRegistry;
+        this.dataStoreSubscriptionsSupplier = builder.dataStoreSubscriptionsSupplier;
 
         this.ongoingOperationsDisposable = new CompositeDisposable();
 
         // Operation times out after 60 seconds. If there are more than 5 models,
         // then 20 seconds are added to the timer per additional model count.
+        Set<SubscriptionModel> subscriptionModelTypes = dataStoreSubscriptionsSupplier
+                .get().getSubscriptions(modelProvider);
+        int subscriptionCount = subscriptionModelTypes.size();
         this.adjustedTimeoutSeconds = Math.max(
             NETWORK_OP_TIMEOUT_SECONDS,
-            TIMEOUT_SECONDS_PER_MODEL * Math.max(
-                    modelProvider.models().size(),
-                    modelProvider.modelSchemas().size()
-            )
+                TIMEOUT_SECONDS_PER_SUBSCRIPTION * subscriptionCount
         );
     }
 
@@ -120,7 +127,9 @@ final class SubscriptionProcessor {
      * Start subscribing to model mutations.
      */
     synchronized void startSubscriptions() throws DataStoreException {
-        int subscriptionCount = modelProvider.modelNames().size() * SubscriptionType.values().length;
+        Set<SubscriptionModel> subscriptionModelTypes = dataStoreSubscriptionsSupplier
+                .get().getSubscriptions(modelProvider);
+        int subscriptionCount = subscriptionModelTypes.size();
         // Create a latch with the number of subscriptions are requesting. Each of these will be
         // counted down when each subscription's onStarted event is called.
         AbortableCountDownLatch<DataStoreException> latch = new AbortableCountDownLatch<>(subscriptionCount);
@@ -130,10 +139,10 @@ final class SubscriptionProcessor {
         buffer = UnicastSubject.create();
 
         Set<Observable<SubscriptionEvent<? extends Model>>> subscriptions = new HashSet<>();
-        for (ModelSchema modelSchema : modelProvider.modelSchemas().values()) {
-            for (SubscriptionType subscriptionType : SubscriptionType.values()) {
-                subscriptions.add(subscriptionObservable(appSync, subscriptionType, latch, modelSchema));
-            }
+        for (SubscriptionModel subscriptionModel : subscriptionModelTypes) {
+            LOG.debug("Requesting subscription for " + subscriptionModel);
+            subscriptions.add(subscriptionObservable(
+                    appSync, subscriptionModel.getSubscriptionType(), latch, subscriptionModel.getModelSchema()));
         }
 
         ongoingOperationsDisposable.add(Observable.merge(subscriptions)
@@ -158,8 +167,7 @@ final class SubscriptionProcessor {
             Amplify.Hub.publish(HubChannel.DATASTORE,
                                 HubEvent.create(DataStoreChannelEventName.SUBSCRIPTIONS_ESTABLISHED));
             LOG.info(String.format(Locale.US,
-                "Started subscription processor for models: %s of types %s.",
-                modelProvider.modelNames(), Arrays.toString(SubscriptionType.values())
+        "Started subscription processor for models types: %s.", subscriptionModelTypes
             ));
         } else {
             throw new DataStoreException("Timed out waiting for subscription processor to start.", "Retry");
@@ -353,11 +361,12 @@ final class SubscriptionProcessor {
      * Builds instances of {@link SubscriptionProcessor}s.
      */
     public static final class Builder implements AppSyncStep, ModelProviderStep, SchemaRegistryStep, MergerStep,
-            QueryPredicateProviderStep, OnFailureStep, BuildStep {
+            QueryPredicateProviderStep, DataStoreSubscriptionsSupplierStep, OnFailureStep, BuildStep {
         private AppSync appSync;
         private ModelProvider modelProvider;
         private Merger merger;
         private QueryPredicateProvider queryPredicateProvider;
+        private Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier;
         private Consumer<Throwable> onFailure;
         private SchemaRegistry schemaRegistry;
 
@@ -390,8 +399,14 @@ final class SubscriptionProcessor {
         }
 
         @NonNull
+        public OnFailureStep dataStoreSubscriptionsSupplier(@NonNull Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier) {
+            this.dataStoreSubscriptionsSupplier = Objects.requireNonNull(dataStoreSubscriptionsSupplier);
+            return Builder.this;
+        }
+
+        @NonNull
         @Override
-        public OnFailureStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider) {
+        public DataStoreSubscriptionsSupplierStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider) {
             this.queryPredicateProvider = Objects.requireNonNull(queryPredicateProvider);
             return Builder.this;
         }
@@ -432,12 +447,17 @@ final class SubscriptionProcessor {
 
     interface QueryPredicateProviderStep {
         @NonNull
-        OnFailureStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider);
+        DataStoreSubscriptionsSupplierStep queryPredicateProvider(QueryPredicateProvider queryPredicateProvider);
     }
 
     interface OnFailureStep {
         @NonNull
         BuildStep onFailure(Consumer<Throwable> onFailure);
+    }
+
+    interface DataStoreSubscriptionsSupplierStep {
+        @NonNull
+        OnFailureStep dataStoreSubscriptionsSupplier(Supplier<DataStoreSubscriptionsSupplier>  dataStoreSubscriptionsSupplier);
     }
 
     interface BuildStep {
