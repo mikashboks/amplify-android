@@ -85,7 +85,6 @@ final class SubscriptionProcessor {
     private final Consumer<Throwable> onFailure;
     private final CompositeDisposable ongoingOperationsDisposable;
     private final long adjustedTimeoutSeconds;
-    private ReplaySubject<SubscriptionEvent<? extends Model>> buffer;
     private Supplier<DataStoreSubscriptionsSupplier> dataStoreSubscriptionsSupplier;
     private UnicastSubject<SubscriptionEvent<? extends Model>> buffer;
 
