@@ -55,8 +55,16 @@ final class QueryPredicateProvider {
      * @throws DataStoreException on error obtaining the {@link DataStoreConfiguration}.
      */
     public void resolvePredicates() throws DataStoreException {
-        Map<String, DataStoreSyncExpression> expressions =
-                dataStoreConfigurationProvider.getConfiguration().getSyncExpressions();
+        Map<String, DataStoreSyncExpression> expressions;
+        try {
+            expressions = dataStoreConfigurationProvider.getConfiguration().getSyncExpressions();
+        } catch (Exception exception) {
+            throw new DataStoreException(
+                "Failed to get DataStore configuration while resolving predicates.",
+                exception,
+                "Ensure DataStore is fully initialized before resolving predicates."
+            );
+        }
         predicateMap.clear();
         predicateMap.putAll(Observable.fromIterable(expressions.entrySet())
                 .map(entry -> Pair.create(entry.getKey(), entry.getValue().resolvePredicate()))
