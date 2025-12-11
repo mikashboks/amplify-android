@@ -113,7 +113,15 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             schemaRegistry,
             sqliteStorageAdapter,
             AppSyncClient.via(api),
-            () -> pluginConfiguration,
+            () -> {
+                if (pluginConfiguration == null) {
+                    throw new DataStoreException(
+                        "DataStore plugin is not yet configured.",
+                        "Please wait for DataStore initialization to complete before performing operations."
+                    );
+                }
+                return pluginConfiguration;
+            },
             () -> api.getPlugins().isEmpty() ? Orchestrator.State.LOCAL_ONLY : Orchestrator.State.SYNC_VIA_API,
             reachabilityMonitor,
             isSyncRetryEnabled
@@ -148,7 +156,15 @@ public final class AWSDataStorePlugin extends DataStorePlugin<Void> {
             schemaRegistry,
             sqliteStorageAdapter,
             AppSyncClient.via(api, this.authModeStrategy),
-            () -> pluginConfiguration,
+            () -> {
+                if (pluginConfiguration == null) {
+                    throw new DataStoreException(
+                        "DataStore plugin is not yet configured.",
+                        "Please wait for DataStore initialization to complete before performing operations."
+                    );
+                }
+                return pluginConfiguration;
+            },
             () -> api.getPlugins().isEmpty() ? Orchestrator.State.LOCAL_ONLY : Orchestrator.State.SYNC_VIA_API,
             reachabilityMonitor,
             isSyncRetryEnabled

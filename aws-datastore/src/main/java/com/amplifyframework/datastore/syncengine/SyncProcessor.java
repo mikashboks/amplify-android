@@ -186,12 +186,16 @@ final class SyncProcessor {
             })
             .doOnError(failureToSync -> {
                 LOG.warn("Initial cloud sync failed for " + schema.getName() + ".", failureToSync);
-                DataStoreErrorHandler dataStoreErrorHandler =
-                    dataStoreConfigurationProvider.getConfiguration().getErrorHandler();
-                dataStoreErrorHandler.accept(new DataStoreException(
-                    "Initial cloud sync failed for " + schema.getName() + ".", failureToSync,
-                    "Check your internet connection."
-                ));
+                try {
+                    DataStoreErrorHandler dataStoreErrorHandler =
+                        dataStoreConfigurationProvider.getConfiguration().getErrorHandler();
+                    dataStoreErrorHandler.accept(new DataStoreException(
+                        "Initial cloud sync failed for " + schema.getName() + ".", failureToSync,
+                        "Check your internet connection."
+                    ));
+                } catch (Exception exception) {
+                    LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", exception);
+                }
             })
             .doOnComplete(() ->
                 LOG.info("Successfully sync'd down model state from cloud.")
@@ -210,9 +214,20 @@ final class SyncProcessor {
             return SyncTime.never();
         }
 
+        long syncIntervalMs;
+        try {
+            syncIntervalMs = dataStoreConfigurationProvider.getConfiguration().getSyncIntervalMs();
+        } catch (Exception exception) {
+            LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", exception);
+            throw new DataStoreException(
+                "Failed to get DataStore configuration during sync time filtering.",
+                exception,
+                "Ensure DataStore is fully initialized before syncing."
+            );
+        }
+
         // "If (now - last sync time) is within the base sync interval"
-        if (Time.now() - lastSyncTime.toLong() <=
-            dataStoreConfigurationProvider.getConfiguration().getSyncIntervalMs()) {
+        if (Time.now() - lastSyncTime.toLong() <= syncIntervalMs) {
             // Pass through the last sync time, so that it can be used to compute delta sync.
             return lastSyncTime;
         }
@@ -240,8 +255,19 @@ final class SyncProcessor {
     private <T extends Model> Flowable<List<ModelWithMetadata<T>>> syncModel(ModelSchema schema, SyncTime syncTime)
             throws DataStoreException {
         final Long lastSyncTimeAsLong = syncTime.exists() ? syncTime.toLong() : null;
-        final Integer syncPageSize = dataStoreConfigurationProvider.getConfiguration().getSyncPageSize();
-        final Integer syncMaxRecords = dataStoreConfigurationProvider.getConfiguration().getSyncMaxRecords();
+        final Integer syncPageSize;
+        final Integer syncMaxRecords;
+        try {
+            syncPageSize = dataStoreConfigurationProvider.getConfiguration().getSyncPageSize();
+            syncMaxRecords = dataStoreConfigurationProvider.getConfiguration().getSyncMaxRecords();
+        } catch (Exception exception) {
+            LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", exception);
+            throw new DataStoreException(
+                "Failed to get DataStore configuration during sync.",
+                exception,
+                "Ensure DataStore is fully initialized before syncing."
+            );
+        }
         AtomicReference<Integer> recordsFetched = new AtomicReference<>(0);
         QueryPredicate predicate = queryPredicateProvider.getPredicate(schema.getName());
         // Create a BehaviorProcessor, and set the default value to a GraphQLRequest that fetches the first page.
@@ -258,16 +284,20 @@ final class SyncProcessor {
         })
                 .doOnNext(paginatedResult -> {
                     if (paginatedResult.hasErrors()) {
-                        DataStoreErrorHandler errorHandler = dataStoreConfigurationProvider.getConfiguration()
-                                .getErrorHandler();
+                        try {
+                            DataStoreErrorHandler errorHandler = dataStoreConfigurationProvider.getConfiguration()
+                                    .getErrorHandler();
 
-                        for (GraphQLResponse.Error error : paginatedResult.getErrors()) {
-                            errorHandler.accept(new DataStoreException(
-                                    "Error received when syncing data: " + error.getMessage(),
-                                    "Ensure app code is up to date, auth directives exist and are correct on each " +
-                                            "model, and that server-side data has not been invalidated by a schema " +
-                                            "change."
-                            ));
+                            for (GraphQLResponse.Error error : paginatedResult.getErrors()) {
+                                errorHandler.accept(new DataStoreException(
+                                        "Error received when syncing data: " + error.getMessage(),
+                                        "Ensure app code is up to date, auth directives exist and are correct on each " +
+                                                "model, and that server-side data has not been invalidated by a schema " +
+                                                "change."
+                                ));
+                            }
+                        } catch (Exception exception) {
+                            LOG.error("Error getting dataStoreConfigurationProvider.getConfiguration", exception);
                         }
 
                         Amplify.Hub.publish(HubChannel.DATASTORE,
